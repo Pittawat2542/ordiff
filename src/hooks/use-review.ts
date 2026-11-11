@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import * as demo from "../data";
+import * as demo from "../sample-data";
 import { createReviewModel } from "../review";
 import type {
   McpConfig,
@@ -16,6 +16,14 @@ type Session = {
   workspace: Workspace | null;
   mode: "none" | "demo" | "git";
   review: ReviewState;
+  undo: {
+    id: string;
+    expiresAt: number;
+    location: Pick<
+      ReviewState,
+      "view" | "groupId" | "activeId" | "query" | "filter" | "revisit"
+    >;
+  } | null;
 };
 const keyFor = (workspace: Workspace | null, demoMode = false) =>
   `ordiff.review.v2.${demoMode ? "demo" : workspace?.repo.path || "none"}`;
@@ -65,6 +73,7 @@ export function useReview() {
     workspace: null,
     mode: "none",
     review: createReviewModel(empty).createReview(),
+    undo: null,
   }));
   const current = useRef(session);
   current.current = session;
@@ -131,11 +140,25 @@ export function useReview() {
           workspace: next,
           mode: fromDemo ? "demo" : next ? "git" : "none",
           review: normalize(nextModel, review),
+          undo: sameDiff ? previous.undo : null,
         };
       });
     },
     [],
   );
+  useEffect(() => {
+    if (!session.undo) return;
+    const record = session.undo;
+    const timer = setTimeout(
+      () => {
+        setSession((previous) =>
+          previous.undo === record ? { ...previous, undo: null } : previous,
+        );
+      },
+      Math.max(0, record.expiresAt - Date.now()),
+    );
+    return () => clearTimeout(timer);
+  }, [session.undo]);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try {
@@ -205,6 +228,7 @@ export function useReview() {
       const nextModel = createReviewModel(previous.workspace || empty);
       return {
         ...previous,
+        undo: action.type === "set-reviewed" ? null : previous.undo,
         review: normalize(
           nextModel,
           nextModel.reduceReview(previous.review, action),
@@ -217,14 +241,13 @@ export function useReview() {
       const nextModel = createReviewModel(previous.workspace || empty);
       const section = nextModel.getActiveSection(previous.review);
       if (!section) return previous;
+      const wasReviewed = previous.review.reviewed.includes(section.id);
       let review = nextModel.reduceReview(previous.review, {
-        type: "review",
+        type: "set-reviewed",
         id: section.id,
+        reviewed: true,
       });
-      if (
-        !previous.review.reviewed.includes(section.id) &&
-        nextModel.getReviewStatus(review) !== "complete"
-      ) {
+      if (nextModel.getReviewStatus(review) !== "complete") {
         const order = [
           ...new Set([
             ...nextModel.guidedOrder,
@@ -237,23 +260,81 @@ export function useReview() {
           ...order.slice(0, position),
         ].find((id) => !review.reviewed.includes(id));
         if (nextId) {
-          if (
-            review.view === "behavior" &&
-            !nextModel.sectionById[nextId].group
-          )
+          const nextSection = nextModel.sectionById[nextId];
+          if (review.view === "behavior" && !nextSection.group)
             review = nextModel.reduceReview(review, {
               type: "view",
               view: "ungrouped",
+            });
+          else if (review.view === "ungrouped" && nextSection.group)
+            review = nextModel.reduceReview(review, {
+              type: "view",
+              view: "all",
             });
           review = nextModel.reduceReview(review, {
             type: "section",
             id: nextId,
           });
-          if (review.filter === "reviewed")
-            review = { ...review, filter: "all" };
+          if (
+            !nextModel
+              .getVisibleSections(review)
+              .some((item) => item.id === nextId)
+          )
+            review = { ...review, query: "", filter: "all" };
         }
       }
-      return { ...previous, review: normalize(nextModel, review) };
+      const { view, groupId, activeId, query, filter, revisit } =
+        previous.review;
+      return {
+        ...previous,
+        review: normalize(nextModel, review),
+        undo: wasReviewed
+          ? previous.undo
+          : {
+              id: section.id,
+              expiresAt: Date.now() + 6000,
+              location: { view, groupId, activeId, query, filter, revisit },
+            },
+      };
+    });
+  }
+  function undoLastMark() {
+    setSession((previous) => {
+      if (!previous.undo || previous.undo.expiresAt <= Date.now())
+        return { ...previous, undo: null };
+      const nextModel = createReviewModel(previous.workspace || empty);
+      let review = nextModel.reduceReview(previous.review, {
+        type: "set-reviewed",
+        id: previous.undo.id,
+        reviewed: false,
+      });
+      review = { ...review, ...previous.undo.location };
+      const section = nextModel.sectionById[previous.undo.id];
+      if (
+        review.view === "behavior" &&
+        !nextModel.groupById[review.groupId || ""]?.sections.includes(
+          section.id,
+        )
+      ) {
+        review = {
+          ...review,
+          view: section.group ? "behavior" : "ungrouped",
+          groupId: section.group,
+        };
+      } else if (review.view === "ungrouped" && section.group) {
+        review = { ...review, view: "all" };
+      }
+      if (
+        !nextModel
+          .getVisibleSections(review)
+          .some((item) => item.id === section.id)
+      )
+        review = { ...review, query: "", filter: "all" };
+      return {
+        ...previous,
+        undo: null,
+        review: normalize(nextModel, review),
+      };
     });
   }
   async function connectRepository(path: string): Promise<boolean> {
@@ -364,6 +445,7 @@ export function useReview() {
   function restart() {
     setSession((previous) => ({
       ...previous,
+      undo: null,
       review: createReviewModel(previous.workspace || empty).createReview(),
     }));
   }
@@ -398,6 +480,8 @@ export function useReview() {
     announce,
     dispatch,
     markAndContinue,
+    canUndo: !!session.undo,
+    undoLastMark,
     connectRepository,
     refreshDiff,
     disconnect,

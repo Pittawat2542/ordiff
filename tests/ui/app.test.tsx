@@ -130,7 +130,7 @@ test("notes, checklist decisions, review progress, and appearance survive reopen
     }),
   ).toBeInTheDocument();
   fireEvent.click(
-    screen.getByRole("button", { name: "Pipeline: pipeline/serialize.ts" }),
+    screen.getByRole("button", { name: /Pipeline: pipeline\/serialize.ts/ }),
   );
   fireEvent.click(screen.getByText("Notes & checklist"));
   expect(screen.getByRole("textbox", { name: "Review note" })).toHaveValue(
@@ -363,7 +363,8 @@ test("polling accepts a new agent path for the same diff without losing progress
     expect(
       screen.getByRole("heading", { name: "Expose failure" }),
     ).toBeInTheDocument();
-    expect(screen.getByText("Start with the contract.")).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Context", { exact: true }));
+    expect(screen.getByText("Start with the contract.")).toBeVisible();
     expect(
       screen.getByRole("button", {
         name: "Review summary: 1 of 2 sections reviewed",
@@ -524,4 +525,297 @@ test("mobile search opens even when the shortcut arrives before the viewport cha
   expect(
     screen.getByRole("searchbox", { name: "Search all changes" }),
   ).toHaveFocus();
+});
+
+test("all section navigation stays in the sidebar and distinguishes hunks in the same file", async () => {
+  await sample();
+  fireEvent.click(screen.getByRole("button", { name: /All changes/ }));
+  const navigation = within(
+    screen.getByRole("complementary", { name: "Review navigation" }),
+  );
+  const sections = within(
+    navigation.getByRole("navigation", { name: "Changed sections" }),
+  );
+  const status = sections.getByRole("button", {
+    name: /ui\/RunStatus.tsx.*RunStatus/,
+  });
+  const actions = sections.getByRole("button", {
+    name: /ui\/RunStatus.tsx.*RunActions/,
+  });
+  expect(status).not.toBe(actions);
+  fireEvent.click(actions);
+  expect(
+    screen.getByRole("region", { name: "ui/RunStatus.tsx code diff" }),
+  ).toHaveTextContent("Retry run");
+  expect(actions).toHaveAttribute("aria-current", "true");
+});
+
+test("agent context starts collapsed and closes when moving to another section", async () => {
+  await sample();
+  const context = screen
+    .getByText("Context", { exact: true })
+    .closest("details")!;
+  expect(context.open).toBe(false);
+  fireEvent.click(screen.getByText("Context", { exact: true }));
+  expect(context.open).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+  expect(
+    screen.getByText("Context", { exact: true }).closest("details"),
+  ).not.toHaveAttribute("open");
+});
+
+test("continuing from reviewed code advances without reversing the review decision", async () => {
+  await sample();
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Previous step" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Continue/ }));
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 1 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "ui/RunStatus.tsx code diff" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Previous step" }));
+  fireEvent.click(screen.getByRole("button", { name: "Mark unreviewed" }));
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 0 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("holding the review shortcut does not mark additional sections", async () => {
+  await sample();
+  fireEvent.keyDown(document.body, { key: "r" });
+  fireEvent.keyDown(document.body, { key: "r", repeat: true });
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 1 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("undo restores the marked section and preserves notes written after marking", async () => {
+  await sample();
+  fireEvent.click(screen.getByText("Notes & checklist"));
+  fireEvent.click(screen.getByLabelText("All terminal states are represented"));
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  fireEvent.click(screen.getByText("Notes & checklist"));
+  fireEvent.change(screen.getByRole("textbox", { name: "Review note" }), {
+    target: { value: "Keep this later note." },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(
+    screen.getByRole("region", { name: "pipeline/serialize.ts code diff" }),
+  ).toHaveFocus();
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 0 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByText("Notes & checklist"));
+  expect(
+    screen.getByLabelText("All terminal states are represented"),
+  ).toBeChecked();
+  fireEvent.click(screen.getByRole("button", { name: "Next step" }));
+  fireEvent.click(screen.getByText("Notes & checklist"));
+  expect(screen.getByRole("textbox", { name: "Review note" })).toHaveValue(
+    "Keep this later note.",
+  );
+  expect(
+    screen.queryByRole("button", { name: "Undo" }),
+  ).not.toBeInTheDocument();
+});
+
+test("undo expires six seconds after the most recent mark", async () => {
+  await sample();
+  vi.useFakeTimers();
+  try {
+    fireEvent.click(
+      screen.getByRole("button", { name: /Mark reviewed & next/ }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Mark reviewed & next/ }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(1000);
+    });
+    expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(5000);
+    });
+    expect(
+      screen.queryByRole("button", { name: "Undo" }),
+    ).not.toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+test("undo is invalidated when refreshing to a different diff", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      json({
+        revision: url === "/api/refresh" ? 2 : 1,
+        workspace:
+          url === "/api/refresh" ? { ...repo, version: "git-v2" } : repo,
+      }),
+    ),
+  );
+  render(<App />);
+  await screen.findByRole("heading", { name: "All changes" });
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Refresh diff" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Undo" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 0 of 2 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("continuing from search reveals the next pending section outside the search results", async () => {
+  await sample();
+  fireEvent.change(
+    screen.getByRole("searchbox", { name: "Search all changes" }),
+    { target: { value: "LOG_LEVEL" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  expect(
+    screen.getByRole("region", { name: "README.md code diff" }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("searchbox", { name: "Search all changes" }),
+  ).toHaveValue("");
+});
+
+test("undo after completion restores only the last mark and revisiting keeps completion intact", async () => {
+  await sample();
+  for (let index = 0; index < 10; index++)
+    fireEvent.click(
+      screen.getByRole("button", { name: /Mark reviewed & next/ }),
+    );
+  expect(
+    screen.getByRole("heading", { name: "All changes reviewed." }),
+  ).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 9 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByRole("region", { name: "README.md code diff" }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  fireEvent.click(
+    screen.getByRole("button", { name: /View reviewed changes/ }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: /^Continue/ }));
+  expect(
+    screen.getByRole("dialog", { name: "All changes reviewed." }),
+  ).toBeVisible();
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 10 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("changing repositories expires undo even when their diff version matches", async () => {
+  const another = {
+    ...repo,
+    repo: { ...repo.repo, path: "/tmp/another-repo", name: "another-repo" },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      json({
+        revision: url === "/api/repository" ? 2 : 1,
+        workspace: url === "/api/repository" ? another : repo,
+      }),
+    ),
+  );
+  render(<App />);
+  await screen.findByRole("heading", { name: "All changes" });
+  fireEvent.click(screen.getByRole("button", { name: /Mark reviewed & next/ }));
+  expect(screen.getByRole("button", { name: "Undo" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Repository settings" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Repository path" }), {
+    target: { value: "/tmp/another-repo" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Open repository" }));
+  await waitFor(() =>
+    expect(
+      screen.queryByRole("button", { name: "Undo" }),
+    ).not.toBeInTheDocument(),
+  );
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 0 of 2 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+});
+
+test("undo still reveals its section after an agent replaces the behavior groups", async () => {
+  let proposed = false;
+  vi.useFakeTimers();
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      json({
+        revision: proposed ? 2 : 1,
+        workspace: {
+          ...repo,
+          planStatus: "current",
+          groups: [
+            {
+              id: proposed ? "new-plan" : "old-plan",
+              title: proposed ? "Replacement behavior" : "Original behavior",
+              description: "Inspect the status.",
+              sections: ["first", "second"],
+            },
+          ],
+        },
+      }),
+    ),
+  );
+  try {
+    render(<App />);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /Mark reviewed & next/ }),
+    );
+    proposed = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000);
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    expect(
+      screen.getByRole("region", { name: "run.ts code diff" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Replacement behavior" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", {
+        name: "Review summary: 0 of 2 sections reviewed",
+      }),
+    ).toBeInTheDocument();
+  } finally {
+    vi.useRealTimers();
+  }
 });

@@ -3,6 +3,29 @@ export type ReviewView = "behavior" | "all" | "ungrouped";
 export type ReviewFilter = "all" | "reviewed" | "unreviewed";
 export type ReviewStatus = "clean" | "complete" | "reviewing";
 
+export type PreviewKind =
+  | "image"
+  | "pdf"
+  | "word"
+  | "word-doc"
+  | "spreadsheet"
+  | "csv"
+  | "markdown"
+  | "audio"
+  | "video"
+  | "unsupported";
+export interface FileRevision {
+  size: number;
+  hash: string;
+}
+export interface FilePreview {
+  kind: PreviewKind;
+  mimeType: string;
+  before: FileRevision | null;
+  after: FileRevision | null;
+  base?: string | null;
+}
+
 export interface DiffLine {
   type: "add" | "remove" | "context";
   text: string;
@@ -18,13 +41,12 @@ export interface DiffSection {
   language?: string;
   symbol?: string;
   title?: string;
-  subtitle?: string;
   explanation?: string;
-  connection?: string[];
   group?: string | null;
   checklist?: string[];
   lines?: DiffLine[];
   binary?: boolean;
+  file?: FilePreview;
 }
 
 export interface ReviewSection extends DiffSection {
@@ -75,11 +97,12 @@ export interface ReviewState {
 }
 
 export type ReviewAction =
-  | { type: "group" | "section" | "review"; id: string }
+  | { type: "group" | "section"; id: string }
+  | { type: "set-reviewed"; id: string; reviewed: boolean }
   | { type: "view"; view: ReviewView }
   | { type: "note"; id: string; text: string }
   | { type: "check"; id: string; index: number }
-  | { type: "next" | "previous" | "theme" }
+  | { type: "next" | "previous" }
   | { type: "search"; query: string }
   | { type: "filter"; filter: ReviewFilter };
 

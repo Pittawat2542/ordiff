@@ -1,4 +1,3 @@
-import * as demo from "./data";
 import type {
   ReviewAction,
   ReviewDataset,
@@ -52,9 +51,7 @@ export function createReviewModel(dataset: ReviewDataset) {
     let activeId: string | null =
       source.activeId && sectionById[source.activeId]
         ? source.activeId
-        : sectionById["status-ui"]
-          ? "status-ui"
-          : sections[0]?.id || null;
+        : sections[0]?.id || null;
     const groupId =
       source.groupId && groupById[source.groupId]
         ? source.groupId
@@ -177,13 +174,15 @@ export function createReviewModel(dataset: ReviewDataset) {
           activeId: visible[0]?.id || null,
           revisit: getReviewStatus(state) === "complete",
         };
-      case "review":
+      case "set-reviewed":
         if (!sectionById[action.id]) return state;
+        const reviewed = action.reviewed;
+        if (state.reviewed.includes(action.id) === reviewed) return state;
         return {
           ...state,
-          reviewed: state.reviewed.includes(action.id)
-            ? state.reviewed.filter((id) => id !== action.id)
-            : [...state.reviewed, action.id],
+          reviewed: reviewed
+            ? [...state.reviewed, action.id]
+            : state.reviewed.filter((id) => id !== action.id),
           revisit: false,
         };
       case "note":
@@ -236,8 +235,6 @@ export function createReviewModel(dataset: ReviewDataset) {
         return ["all", "reviewed", "unreviewed"].includes(action.filter)
           ? { ...state, filter: action.filter, revisit: true }
           : state;
-      case "theme":
-        return { ...state, theme: state.theme === "light" ? "dark" : "light" };
       default:
         return state;
     }
@@ -266,17 +263,3 @@ export function createReviewModel(dataset: ReviewDataset) {
     getReviewStatus,
   };
 }
-
-const model = createReviewModel({
-  version: demo.DIFF_VERSION,
-  groups: demo.groups,
-  sections: demo.sections,
-});
-export const {
-  createReview,
-  reduceReview,
-  getProgress,
-  getVisibleSections,
-  getActiveSection,
-  getReviewStatus,
-} = model;

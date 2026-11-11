@@ -129,12 +129,6 @@ const paths: Record<string, ReactNode> = {
       <path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.4 1.4m11.2 11.2L19 19M5 19l1.4-1.4M17.6 6.4 19 5" />
     </>
   ),
-  panel: (
-    <>
-      <rect x="3" y="4" width="18" height="16" rx="3" />
-      <path d="M15 4v16" />
-    </>
-  ),
   keyboard: (
     <>
       <rect x="2" y="5" width="20" height="14" rx="3" />

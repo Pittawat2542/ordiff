@@ -84,7 +84,6 @@ export function RepositoryForm({
     errorId = inDialog ? "dialog-repo-error" : "repo-error";
   return (
     <form
-      id={inDialog ? "repository-form" : "onboarding-form"}
       className="connect-form"
       onSubmit={async (event) => {
         event.preventDefault();
@@ -280,7 +279,7 @@ export function AppDialog({
                   </span>
                 </div>
                 <div>
-                  <span>Mark reviewed and continue</span>
+                  <span>Review or continue to the next pending section</span>
                   <kbd>R</kbd>
                 </div>
                 <div>
@@ -288,7 +287,7 @@ export function AppDialog({
                   <kbd>?</kbd>
                 </div>
               </div>
-              <div className="prototype-note">
+              <div className="repository-access-note">
                 <strong>Your repository stays yours.</strong>
                 <p>
                   Git access is read-only. Use Refresh to pick up file edits.

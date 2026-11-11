@@ -56,3 +56,22 @@ test("source highlighting preserves keywords, strings, and comments as escaped t
     html.includes('<span class="token-comment">// safe &lt;tag&gt;</span>'),
   );
 });
+
+test("syntax highlighting understands Python and multiline comments independently on each diff side", () => {
+  const python = renderToStaticMarkup(createElement(DiffView, { section: {
+    id: 'python', path: 'review.py', role: 'Code', language: 'Code', lines: [
+      { type: 'add', old: null, new: 1, text: 'def review(value):' },
+      { type: 'add', old: null, new: 2, text: '    return True' },
+    ],
+  }}));
+  assert.match(python, /class="token-keyword">def</);
+  const comment = renderToStaticMarkup(createElement(DiffView, { section: {
+    id: 'comments', path: 'review.ts', role: 'Code', language: 'TypeScript', lines: [
+      { type: 'remove', old: 1, new: null, text: '/* original comment' },
+      { type: 'remove', old: 2, new: null, text: 'return false; */' },
+      { type: 'add', old: null, new: 1, text: 'const value = true;' },
+    ],
+  }}));
+  assert.match(comment, /class="token-comment">return false; \*\//);
+  assert.match(comment, /class="token-keyword">const</);
+});

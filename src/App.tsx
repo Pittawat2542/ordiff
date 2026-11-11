@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useReview } from "./hooks/use-review";
 import { Icon } from "./icons";
 import { Sidebar } from "./components/sidebar";
-import { ReviewContent, ReviewDock } from "./components/review-content";
+import { ReviewContent, ReviewFooter } from "./components/review-content";
 import {
   AppDialog,
   NativeDialog,
@@ -17,7 +17,7 @@ export function App() {
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [navOpen, setNavOpen] = useState(false);
   const [mobile, setMobile] = useState(
-    () => matchMedia("(max-width: 760px)").matches,
+    () => matchMedia("(max-width: 1023px)").matches,
   );
   const [focusSearch, setFocusSearch] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -31,9 +31,18 @@ export function App() {
   }, []);
   const searchRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const focusAfterUndo = useRef(false);
   const { workspace, state, model } = review;
   useEffect(() => {
-    const media = matchMedia("(max-width: 760px)");
+    if (!focusAfterUndo.current) return;
+    focusAfterUndo.current = false;
+    const target =
+      document.querySelector<HTMLElement>("#active-diff .diff-code") ||
+      document.getElementById("review-content");
+    target?.focus({ preventScroll: true });
+  }, [state, review.canUndo]);
+  useEffect(() => {
+    const media = matchMedia("(max-width: 1023px)");
     const sync = () => {
       setMobile(media.matches);
       if (!media.matches) setNavOpen(false);
@@ -47,6 +56,7 @@ export function App() {
   }, [workspace?.repo.path, workspace?.version]);
   useEffect(() => {
     if (scrollRef.current) scrollRef.current.scrollTop = 0;
+    setDetailsOpen(false);
   }, [state.activeId, state.view, workspace?.version]);
   useEffect(() => {
     if (focusSearch) {
@@ -72,6 +82,10 @@ export function App() {
     setDetailsOpen(false);
     setExpanded(new Set());
   }
+  function continueReview() {
+    if (model.getReviewStatus(state) === "complete") openDialog("summary");
+    else review.markAndContinue();
+  }
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       if (
@@ -80,7 +94,7 @@ export function App() {
         workspace
       ) {
         event.preventDefault();
-        const isMobile = matchMedia("(max-width: 760px)").matches;
+        const isMobile = matchMedia("(max-width: 1023px)").matches;
         setDialog(null);
         setMobile(isMobile);
         setNavOpen(isMobile);
@@ -108,7 +122,7 @@ export function App() {
         return;
       if (event.key.toLowerCase() === "r") {
         event.preventDefault();
-        review.markAndContinue();
+        if (!event.repeat) continueReview();
       }
       if (event.key.toLowerCase() === "j") {
         event.preventDefault();
@@ -131,6 +145,7 @@ export function App() {
       openMcp={() => openDialog("mcp")}
       openSummary={() => openDialog("summary")}
       closeNavigation={() => setNavOpen(false)}
+      visible={!mobile || navOpen}
     />
   );
   return (
@@ -138,18 +153,15 @@ export function App() {
       <a className="skip-link" href="#review-content">
         Skip to changes
       </a>
-      <div
-        className={`app-shell ${workspace ? "" : "onboarding-mode"}`}
-        id="app-shell"
-      >
+      <div className={`app-shell ${workspace ? "" : "onboarding-mode"}`}>
         {!mobile && sidebar}
-        <main className="workspace" id="workspace">
+        <main className="workspace">
           <header className="toolbar">
             <div className="toolbar-location">
               <Button
                 variant="ghost"
                 className="mobile-only"
-                id="open-nav"
+
                 aria-label="Open navigation"
                 aria-controls="navigation-dialog"
                 aria-expanded={navOpen}
@@ -158,11 +170,11 @@ export function App() {
               >
                 <Icon name="menu" />
               </Button>
-              <span className="toolbar-repo" id="toolbar-name">
+              <span className="toolbar-repo">
                 {workspace?.repo.name || "Ordiff"}
               </span>
               <span className="toolbar-slash">/</span>
-              <span id="toolbar-context">
+              <span className="toolbar-context">
                 {review.mode === "demo"
                   ? "Sample review"
                   : workspace?.repo.branch || "A clearer way to review"}
@@ -174,13 +186,13 @@ export function App() {
                   <Button
                     variant="unstyled"
                     className="mcp-button"
-                    id="mcp-button"
+
                     onClick={() => openDialog("mcp")}
                   >
-                    <span id="mcp-icon">
+                    <span>
                       <Icon name="sparkle" />
                     </span>
-                    <span id="mcp-label">
+                    <span>
                       {workspace.planStatus === "current"
                         ? "Review path ready"
                         : "Connect agent"}
@@ -189,7 +201,7 @@ export function App() {
                   <Button
                     variant="ghost"
                     className={review.busy ? "is-refreshing" : ""}
-                    id="refresh-button"
+
                     aria-label="Refresh diff"
                     title="Refresh Git changes"
                     disabled={review.busy}
@@ -201,7 +213,7 @@ export function App() {
               )}
               <Button
                 variant="ghost"
-                id="theme-button"
+
                 aria-label={`Switch to ${review.theme === "light" ? "dark" : "light"} appearance`}
                 title="Switch appearance"
                 onClick={review.toggleTheme}
@@ -210,7 +222,7 @@ export function App() {
               </Button>
               <Button
                 variant="ghost"
-                id="help-button"
+
                 aria-label="Help and keyboard shortcuts"
                 title="Help (?)"
                 onClick={() => openDialog("help")}
@@ -219,12 +231,11 @@ export function App() {
               </Button>
             </div>
           </header>
-          <div className="review-scroll" id="review-scroll" ref={scrollRef}>
+          <div className="review-scroll" ref={scrollRef}>
             <div id="review-content" tabIndex={-1}>
               {workspace ? (
                 <ReviewContent
                   review={review}
-                  navigate={navigate}
                   detailsOpen={detailsOpen}
                   setDetailsOpen={setDetailsOpen}
                   expanded={expanded}
@@ -237,8 +248,12 @@ export function App() {
               )}
             </div>
           </div>
-          <div id="review-dock">
-            <ReviewDock review={review} navigate={navigate} />
+          <div className="review-footer-slot">
+            <ReviewFooter
+              review={review}
+              navigate={navigate}
+              onContinue={continueReview}
+            />
           </div>
         </main>
       </div>
@@ -249,7 +264,7 @@ export function App() {
         onClose={() => setNavOpen(false)}
         label="Review navigation"
       >
-        <div id="drawer-slot">{mobile && sidebar}</div>
+        <div className="navigation-content">{mobile && sidebar}</div>
       </NativeDialog>
       <AppDialog
         kind={dialog}
@@ -259,12 +274,25 @@ export function App() {
         navigate={navigate}
       />
       <div
-        className={`toast ${review.toast ? "visible" : ""}`}
-        id="toast"
+        className={`toast ${review.toast || review.canUndo ? "visible" : ""}`}
+
         role="status"
         aria-live="polite"
       >
-        {review.toast}
+        <span>
+          {review.toast || (review.canUndo ? "Section reviewed." : "")}
+        </span>
+        {review.canUndo && (
+          <Button
+            variant="link"
+            onClick={() => {
+              focusAfterUndo.current = true;
+              review.undoLastMark();
+            }}
+          >
+            Undo
+          </Button>
+        )}
       </div>
     </>
   );
