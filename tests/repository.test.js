@@ -39,6 +39,18 @@ test('reads staged, unstaged, and untracked working changes without touching ign
   assert.equal(git(path, 'status', '--porcelain'), before);
 });
 
+test('role classification uses repository paths without sample-specific filename exceptions', async t => {
+  const path = await fixture(t);
+  await mkdir(join(path, 'src'));
+  await writeFile(join(path, 'src/review.ts'), 'export const reviewed = false;\n');
+  await writeFile(join(path, 'src/data.ts'), 'export const rows = [];\n');
+  await writeFile(join(path, 'pipeline/run.ts'), 'export const status = "failed";\n');
+  const snapshot = await readRepository(path);
+  assert.equal(snapshot.sections.find(s => s.path === 'src/review.ts').role, 'Code');
+  assert.equal(snapshot.sections.find(s => s.path === 'src/data.ts').role, 'Code');
+  assert.equal(snapshot.sections.find(s => s.path === 'pipeline/run.ts').role, 'Pipeline');
+});
+
 test('supports unborn repositories, binary additions, and symlinks without reading their targets', async t => {
   const path = await fixture(t, false);
   await writeFile(join(path, 'image.bin'), Buffer.from([0, 1, 2, 3]));

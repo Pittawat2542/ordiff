@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import { realpath, lstat, readFile, readlink, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { describeFile, fileFormat } from './files.js';
 
 const exec = promisify(execFile);
 export const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 24);
@@ -14,14 +15,14 @@ function category(path) {
   if (/(^|\/)(test[s]?|__tests__)(\/|$)|\.(test|spec)\./i.test(path)) return ['Tests', /tsx|jsx/.test(path) ? 'TSX' : 'TypeScript'];
   if (/\.(md|mdx|rst|txt)$/i.test(path)) return ['Docs', 'Markdown'];
   if (/(^|\/)server\//.test(path)) return ['Backend', 'JavaScript'];
-  if (/(^|\/)pipeline\/|src\/(review|data)\./.test(path)) return ['Pipeline', 'JavaScript'];
+  if (/(^|\/)pipeline\//.test(path)) return ['Pipeline', 'JavaScript'];
   if (/\.(jsx|tsx|html|css)$|src\/main\./.test(path)) return ['UI', /tsx|jsx/.test(path) ? 'TSX' : path.endsWith('.css') ? 'CSS' : 'JavaScript'];
   if (/\.(json|ya?ml|toml)$|(^|\/)\./.test(path)) return ['Config', 'Configuration'];
   return ['Code', 'Code'];
 }
 function section(path, header, lines, extra = {}) {
   const [role, language] = category(path);
-  return { id: `hunk-${hash(JSON.stringify([path, header, lines]))}`, path, role, language, group: null, symbol: header, title: header.startsWith('@@') ? header.replace(/^@@.*?@@\s*/, '') || 'Changed section' : header, subtitle: 'Working tree change', explanation: '', connection: [], checklist: [], lines, ...extra };
+  return { id: `hunk-${hash(JSON.stringify([path, header, lines]))}`, path, role, language, group: null, symbol: header, title: header.startsWith('@@') ? header.replace(/^@@.*?@@\s*/, '') || 'Changed section' : header, explanation: '', checklist: [], lines, ...extra };
 }
 function parsePatch(path, patch) {
   const result = [];
@@ -37,7 +38,7 @@ function parsePatch(path, patch) {
   if (result.length) return result.map(item => section(path, item.header, item.lines));
   if (patch.trim()) {
     const binary = /Binary files|GIT binary patch/.test(patch);
-    const detail = binary ? 'Binary file changed. Inspect it in your editor.' : patch.split('\n').filter(row => /mode |rename |similarity /.test(row)).join('\n') || 'File metadata changed.';
+    const detail = binary ? 'Binary file changed.' : patch.split('\n').filter(row => /mode |rename |similarity /.test(row)).join('\n') || 'File metadata changed.';
     return [section(path, binary ? 'Binary file changed' : 'File metadata changed', [{ type: 'context', text: detail, old: null, new: null }], { binary })];
   }
   return [];
@@ -51,7 +52,7 @@ async function addedFile(root, path) {
   let binary;
   try { const sample = Buffer.alloc(8192); const { bytesRead } = await handle.read(sample, 0, sample.length, 0); binary = sample.subarray(0, bytesRead).includes(0); }
   finally { await handle.close(); }
-  if (binary || stat.size > 2 * 1024 * 1024) return [section(path, binary ? 'New binary file' : 'Large file', [{ type: 'context', text: `${binary ? 'Binary file' : 'Text preview omitted: larger than 2 MiB'} (${stat.size.toLocaleString()} bytes). Inspect this file in your editor.`, old: null, new: null }], { binary: true })];
+  if (binary || stat.size > 2 * 1024 * 1024) return [section(path, binary ? 'New binary file' : 'Large file', [{ type: 'context', text: `${binary ? 'Binary file' : 'Text preview omitted: larger than 2 MiB'} (${stat.size.toLocaleString()} bytes).`, old: null, new: null }], { binary: true })];
   const rows = (await readFile(filename, 'utf8')).split('\n');
   if (rows.at(-1) === '') rows.pop();
   const lines = rows.map((text, index) => ({ type: 'add', text, old: null, new: index + 1, extra: false }));
@@ -68,11 +69,21 @@ export async function readRepository(input) {
   const untracked = (await git(root, ['ls-files', '--others', '--exclude-standard', '-z'])).split('\0').filter(Boolean);
   const tracked = (await git(root, head ? ['diff', '--name-only', '--no-renames', '-z', 'HEAD', '--'] : ['ls-files', '-z'])).split('\0').filter(Boolean);
   const paths = [...new Set([...tracked, ...untracked])].sort();
-  if (paths.length > 500) throw new Error('This working tree has more than 500 changed files. Narrow the changes before opening it in this prototype.');
+  if (paths.length > 500) throw new Error('This working tree has more than 500 changed files. Narrow the changes before opening it in Ordiff.');
   const sections = [];
   for (const path of paths) {
     if (!head || untracked.includes(path)) { try { sections.push(...await addedFile(root, path)); } catch (error) { if (error.code !== 'ENOENT') throw error; } }
     else sections.push(...parsePatch(path, await git(root, ['diff', '--no-color', '--no-ext-diff', '--no-textconv', '--no-renames', '--unified=3', 'HEAD', '--', path])));
   }
-  return { version: hash(JSON.stringify([root, head, sections.map(item => item.id)])), repo: { path: root, name: basename(root), branch, hasHead: Boolean(head), source: 'git' }, sections, groups: [], planStatus: 'none' };
+  const previews = new Map();
+  for (const item of sections) {
+    if (!item.binary && fileFormat(item.path).kind === 'unsupported') continue;
+    if (!previews.has(item.path)) previews.set(item.path, await describeFile(root, item.path, head));
+    const file = previews.get(item.path);
+    if (file) {
+      item.file = file;
+      if (item.binary) item.id = `hunk-${hash(JSON.stringify([item.id, file.before?.hash, file.after?.hash]))}`;
+    }
+  }
+  return { version: hash(JSON.stringify([root, head, sections.map(item => [item.id, item.file])])), repo: { path: root, name: basename(root), branch, hasHead: Boolean(head), source: 'git' }, sections, groups: [], planStatus: 'none' };
 }

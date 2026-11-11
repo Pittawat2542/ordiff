@@ -1,6 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import { WorkspaceStore } from './workspace.js';
 import { reviewPlanSchema } from './schema.js';
+import { readPreviewFile, readMarkdownImage, extractWordText } from './files.js';
 
 function reply(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -22,6 +23,24 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
     if (request.headers.origin && request.headers.origin !== url.origin) return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
     try {
       await ready;
+      if (request.method === 'GET' && url.pathname === '/api/file') {
+        if (request.headers['sec-fetch-site'] === 'cross-site') return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
+        const resource = url.searchParams.get('resource');
+        const read = resource === null ? readPreviewFile : readMarkdownImage;
+        const file = await read(store.snapshot(), url.searchParams.get('sectionId'), url.searchParams.get('version'), url.searchParams.get('side') || 'after', resource);
+        let bytes = file.bytes, mimeType = file.mimeType;
+        if (url.searchParams.get('format') === 'text') {
+          if (file.kind !== 'word-doc') return reply(response, 400, { error: 'Text extraction is only available for DOC files.' });
+          bytes = Buffer.from(await extractWordText(bytes), 'utf8'); mimeType = 'text/plain; charset=utf-8';
+        }
+        response.writeHead(200, {
+          'Content-Type': mimeType, 'Content-Length': bytes.length,
+          'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(file.name).replace(/'/g, '%27')}`,
+          'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff',
+          'Cross-Origin-Resource-Policy': 'same-origin', "Content-Security-Policy": "sandbox; default-src 'none'",
+        });
+        return response.end(bytes);
+      }
       if (request.method === 'GET' && url.pathname === '/api/workspace') {
         if (url.searchParams.get('since') === String(store.revision)) return reply(response, 200, { revision: store.revision, unchanged: true });
         const mcpConfig = { mcpServers: { ordiff: { command: process.execPath, args: [fileURLToPath(new URL('./mcp.js', import.meta.url))], env: { ORDIFF_URL: url.origin } } } };
@@ -37,7 +56,7 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
       return reply(response, 200, { revision: store.revision, workspace: store.snapshot() });
     } catch (error) {
       const message = error.name === 'ZodError' ? 'The review plan is not valid. Check its groups, steps, and explanations.' : error.message;
-      return reply(response, /diff changed/.test(message) ? 409 : 400, { error: message });
+      return reply(response, error.status || (/diff changed/.test(message) ? 409 : 400), { error: message });
     }
   };
 }
