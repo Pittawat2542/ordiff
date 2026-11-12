@@ -1,6 +1,5 @@
 import { fileURLToPath } from 'node:url';
 import { WorkspaceStore } from './workspace.js';
-import { reviewPlanSchema } from './schema.js';
 import { readPreviewFile, readMarkdownImage, extractWordText } from './files.js';
 import { readDirectory } from './directories.js';
 
@@ -66,7 +65,10 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
       else if (url.pathname === '/api/recent-repositories/remove') await store.removeRecentRepository(body.path);
       else if (url.pathname === '/api/disconnect') await store.disconnect();
       else if (url.pathname === '/api/refresh' || url.pathname === '/api/context') await store.refresh();
-      else if (url.pathname === '/api/review-plan') await store.submitPlan(reviewPlanSchema.parse(body));
+      else if (url.pathname === '/api/review-plan') {
+        const { reviewPlanSchema } = await import('./schema.js');
+        await store.submitPlan(reviewPlanSchema.parse(body));
+      }
       else return reply(response, 404, { error: 'Not found.' });
       return reply(response, 200, { revision: store.revision, workspace: store.snapshot(), recentRepositories: store.recentRepositories });
     } catch (error) {

@@ -4,7 +4,6 @@ import { resolve, relative, isAbsolute, extname, basename, dirname } from 'node:
 import { runFile } from './processes.js';
 import { createHash } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
-import { fromMarkdown } from 'mdast-util-from-markdown';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const exec = runFile;
@@ -111,6 +110,7 @@ export async function readMarkdownImage(snapshot, sectionId, version, side, reso
     if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(value)) return null;
     try { return decodeURIComponent(value.split(/[?#]/)[0]); } catch { return null; }
   };
+  const { fromMarkdown } = await import('mdast-util-from-markdown');
   const tree = fromMarkdown(source.bytes.toString('utf8'));
   const definitions = new Map(), references = new Set();
   function walk(node, visit) { visit(node); node.children?.forEach(child => walk(child, visit)); }
