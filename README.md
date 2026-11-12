@@ -62,6 +62,14 @@ Previews run locally and support files up to **25 MiB per revision**. XLSX displ
 
 Use **Refresh diff** after filesystem edits. Stale previews ask for a refresh instead of showing bytes from a different diff version.
 
+## Text diff utility
+
+Open **Text diff utility** from the welcome screen or toolbar utility actions (inside **More actions** on compact screens). It opens a separate tab at `http://127.0.0.1:5173/tools/text-diff`; you can also open that URL directly without selecting a repository.
+
+Paste or type into **Original** and **Modified** to see live, side-by-side differences, with changed lines and text highlighted. Both panes are editable and support undo/redo. Use **Swap**, **Clear both**, **Wrap lines**, and the previous/next change buttons to inspect the comparison. Wrapping starts enabled, and the panes stay side by side on narrow screens.
+
+Comparison is case-sensitive and includes whitespace changes. Line endings normalize to LF. Text stays in memory in the utility's browser tab, is never sent to the local server or an external service, and clears on reload. The utility works independently of Git review, feedback, and agent connections, and uses your saved appearance preference.
+
 ## Connect an agent
 
 Select **Connect agent** for the exact configuration for your checkout. The local stdio MCP server exposes `get_review_context` and `submit_review_plan`. Plans must reference the current diff version and existing section IDs; they cannot mark code reviewed.
