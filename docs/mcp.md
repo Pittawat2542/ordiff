@@ -4,6 +4,10 @@ Ordiff's local MCP stdio server lets an agent read the same Git diff shown in th
 
 ## Setup
 
+For the installed macOS app, open Ordiff and use **Connect agent** to copy its configuration. It references the bundled Node executable and MCP module in `Ordiff.app`, with `ORDIFF_URL=http://127.0.0.1:47831`. Keep at least one Ordiff window open (minimized is fine). Closing the last window stops the backend; tool calls then ask you to reopen Ordiff. Moving the app requires copying its configuration again.
+
+For browser development:
+
 1. With Node.js 22.13 or later and Git installed, run `npm install`, then `npm run dev` in this checkout. The app and local API share port 5173. A built app started with `npm run preview` supports the same API.
 2. Open a local repository in Ordiff.
 3. Click **Connect agent** in the toolbar and copy the configuration into your MCP client. The dialog contains the exact Node executable and server path for this machine.
@@ -54,11 +58,11 @@ Submit grounded explanations and use IDs returned by `get_review_context`; never
 
 Git access is read-only: Ordiff does not stage, commit, discard, or change source files. The MCP tools do not mark sections reviewed or approve code. Only the human review interface changes review progress.
 
-Repository selection and review plans are saved in the app checkout's ignored `.ordiff/workspace.json` file. Review decisions, checklists, notes, and appearance are stored in the browser. **Close repository** returns the app to onboarding and clears its active server-side repository and plan. Sample reviews do not connect a repository for MCP access.
+Repository selection and review plans are saved in the app checkout's ignored `.ordiff/workspace.json` file during development, or `~/Library/Application Support/Ordiff/workspace.json` on desktop. Review decisions, checklists, notes, and appearance are stored in the browser or persistent desktop WebView. **Close repository** returns the app to onboarding and clears its active server-side repository and plan. Sample reviews do not connect a repository for MCP access.
 
 The app reads combined working-tree changes against HEAD, including staged, unstaged, and non-ignored untracked files. Repositories without commits are supported. Changed binary files show original and working previews side by side for supported formats; unsupported files retain a fallback. Preview limits and supported formats are in [the README](../README.md#preview-files).
 
-Use **Refresh diff** to pick up filesystem edits; the UI polls for newly submitted plans, not for continuous Git changes. Git snapshots are limited to 500 changed files. All API and MCP access stays on loopback; `ORDIFF_URL` must use HTTP and `127.0.0.1`, `localhost`, or `[::1]`.
+Use **Refresh diff** to pick up filesystem edits; the UI receives revision events for newly submitted plans and never continuously scans Git. Git snapshots are limited to 500 changed files. All API and MCP access stays on loopback; `ORDIFF_URL` must use HTTP and `127.0.0.1`, `localhost`, or `[::1]`.
 
 This version supports one selected local repository and a working-tree comparison. It does not provide GitHub PR access, revision selection, or a hosted repository service.
 

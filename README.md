@@ -8,6 +8,24 @@ Ordiff is a local Git review workspace. Open a checkout, inspect its working cha
 
 ## Run locally
 
+### macOS desktop app
+
+On Apple Silicon with macOS 14 or later, build and install a personal desktop app:
+
+```sh
+npm install
+npm run desktop:build
+npm run desktop:install
+```
+
+Building requires Rust 1.95 through rustup and Apple's Command Line Tools (`xcode-select --install`). The first build downloads a checksum-verified official Node runtime and Rust dependencies. The installed app includes Node and runs without Terminal, Homebrew Node, or this checkout. Git must remain installed.
+
+Open **Ordiff** from Spotlight or `~/Applications/Ordiff.app`. Choose **Options → Keep in Dock** from its Dock icon to pin it. Closing the last Ordiff window or choosing **Quit** stops its backend; minimizing keeps the app available to MCP while pausing UI subscriptions. Downloads save to your Downloads folder with unique filenames.
+
+Desktop data starts fresh and persists independently of your browser. Updates are manual: quit Ordiff, rebuild, and run the installation command again. See [desktop architecture and verification](docs/desktop.md).
+
+### Browser development
+
 Requires **Node.js 22.13 or later** and **Git**.
 
 ```sh
@@ -78,7 +96,7 @@ See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and th
 
 ## Local state
 
-Repository selection and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json`. Review progress, feedback, checklists, and appearance are saved in this browser. **Close repository** returns to onboarding and clears the server's active repository and plan; saved feedback remains available when you reopen that repository. A failed connection preserves the current workspace.
+Repository selection and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json` during browser development, or `~/Library/Application Support/Ordiff/workspace.json` in the desktop app. Review progress, feedback, checklists, and appearance are saved in this browser or the desktop app's persistent WebView. **Close repository** returns to onboarding and clears the server's active repository and plan; saved feedback remains available when you reopen that repository. A failed connection preserves the current workspace.
 
 Review progress belongs to an exact repository and diff version. Refreshing changed contents starts fresh review progress while keeping feedback; refreshing an unchanged diff preserves progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
 

@@ -7,7 +7,7 @@ Ordiff uses React, TypeScript, Vite, Tailwind CSS, and locally owned shadcn/ui c
 | Location                                   | Responsibility                                                                                          |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
 | `src/App.tsx`                              | Workspace composition, dialogs, keyboard shortcuts, and drawer focus                                    |
-| `src/hooks/use-review.ts`                  | Workspace requests, plan polling, browser persistence, explicit review decisions, advancement, and Undo |
+| `src/hooks/use-review.ts`                  | Workspace requests, revision subscriptions, browser persistence, explicit review decisions, advancement, and Undo |
 | `src/review.ts`                            | Dataset-independent review state, navigation, search, filtering, and progress                           |
 | `src/feedback.ts`, `src/prompt.ts`          | Feedback state, captured references, legacy-note import, and deterministic selected-prompt generation  |
 | `src/hooks/use-feedback.ts`                | Repository-scoped browser feedback persistence, independent of diff-versioned review progress          |
@@ -36,7 +36,7 @@ Comparison panes load and retry independently. Preserve those boundaries when ch
 
 ## Local interfaces and persistence
 
-The workspace API serves the selected repository and a revision counter. The browser polls for newly submitted plans; it does not continuously rescan Git. Refresh explicitly after filesystem edits. MCP context retrieval and plan submission also refresh Git before operating.
+The workspace API serves the selected repository and a revision counter. `GET /api/events` opens a same-origin SSE stream, sends the current `{ revision }`, then sends revisions after persisted workspace mutations. Streams have no heartbeat and never read Git. The client fetches a snapshot when the revision changes, closes its stream while hidden or in sample mode, and resynchronizes on return. Failed streams reconnect with exponential backoff capped at 60 seconds while visible. Refresh explicitly after filesystem edits. MCP context retrieval and plan submission also refresh Git before operating.
 
 File requests identify an authorized `sectionId`, exact `version`, and `side` (`before` or `after`). DOC text uses `format=text`; Markdown images use `resource` and must be referenced by that document. Original bytes come from the snapshot's Git blobs; working bytes must match the snapshot's hashes. Requests reject stale versions, changed bytes, symlink targets, paths outside the repository, and cross-origin access. File responses use attachment, no-store, and sandbox headers.
 
