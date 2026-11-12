@@ -23,6 +23,12 @@ Closing the final window or choosing Quit closes the backend's parent pipe. Node
 
 Workspace selection, the ten most recent repositories, and agent plans persist in `~/Library/Application Support/Ordiff/workspace.json`. Closing a repository keeps its history; removing a recent entry leaves the active review open. Review progress, feedback, and appearance use the existing storage keys in a stable, dedicated persistent WebKit data store. Browser state is independent and is not imported. The desktop origin differs from Vite's development port, so both can run together.
 
+## Startup work
+
+Startup keeps Markdown image parsing and review-plan schema validation unloaded until their respective API requests need them. Restoring a saved plan validates it against the Git snapshot just read by repository restoration; new plan submissions still refresh Git before validation to reject stale plans.
+
+Local startup measurements (seven sequential launches per scenario, bundled Node 24.22.2, disposable state and a repository with 40 untracked TypeScript files and an empty initial commit) showed median backend readiness falling from **85 ms to 47 ms** without an active repository. With a saved plan, median time from spawning Node to receiving `/api/workspace` fell from **197 ms to 107 ms**. These are warm filesystem-cache backend measurements, not full native launch-to-paint times; the first post-change empty-workspace sample was 185 ms. Native window creation and WebKit rendering are excluded.
+
 ## Idle work
 
 `GET /api/events` publishes revision notifications without heartbeat traffic. The UI retrieves a snapshot after changes and resynchronizes after a hidden window is shown. It disconnects while hidden, minimized, unfocused on desktop, or in sample mode. Reconnection after failure uses bounded exponential backoff, with no retry activity while hidden. Native focus events supplement Page Visibility for macOS window minimization and app switching.
