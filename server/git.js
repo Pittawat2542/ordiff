@@ -3,6 +3,7 @@ import { realpath, lstat, readFile, readlink, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describeFile, fileFormat } from './files.js';
+import { expandHomePath } from './directories.js';
 
 const exec = runFile;
 export const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 24);
@@ -60,7 +61,7 @@ async function addedFile(root, path) {
 export async function readRepository(input) {
   if (typeof input !== 'string' || !input.trim()) throw new Error('Enter a local Git repository directory.');
   let root;
-  try { const directory = await realpath(input); root = (await git(directory, ['rev-parse', '--show-toplevel'])).trim(); }
+  try { const directory = await realpath(expandHomePath(input)); root = (await git(directory, ['rev-parse', '--show-toplevel'])).trim(); }
   catch { throw new Error('This directory is not an accessible Git repository. Check the path and try again.'); }
   let head = '';
   try { head = (await git(root, ['rev-parse', '--verify', 'HEAD'])).trim(); } catch { /* New repositories have no HEAD. */ }

@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdtemp, mkdir, writeFile, rm, realpath, symlink } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -41,6 +41,45 @@ test('cross-origin requests cannot select a directory or read a connected reposi
   assert.equal(denied.status, 403);
   assert.equal(store.snapshot(), null);
   assert.equal((await fetch(url + '/api/workspace', { headers: { Origin: 'https://unrelated.example' } })).status, 403);
+});
+
+test('directory browsing lists sorted folders and directory symlinks without files or workspace changes', async t => {
+  const { path, url, store } = await setup(t);
+  await mkdir(join(path, 'zebra'));
+  await mkdir(join(path, 'alpha'));
+  await mkdir(join(path, '.hidden'));
+  await symlink(join(path, 'alpha'), join(path, 'linked'));
+  await symlink(join(path, 'missing'), join(path, 'broken'));
+  const response = await fetch(`${url}/api/directories?path=${encodeURIComponent(path)}`);
+  assert.equal(response.status, 200);
+  const listing = await response.json();
+  assert.equal(listing.path, await realpath(path));
+  assert.equal(listing.homePath, homedir());
+  assert.deepEqual(listing.directories.map(dir => dir.name), ['alpha', 'linked', 'zebra']);
+  assert.ok(listing.breadcrumbs.some(crumb => crumb.path === listing.parentPath));
+  const hidden = await (await fetch(`${url}/api/directories?path=${encodeURIComponent(path)}&showHidden=true`)).json();
+  assert.ok(hidden.directories.some(dir => dir.name === '.hidden'));
+  assert.equal((await fetch(`${url}/api/directories?path=${encodeURIComponent(join(path, 'run.ts'))}`)).status, 400);
+  assert.equal((await fetch(`${url}/api/directories?path=${encodeURIComponent(join(path, 'missing'))}`)).status, 400);
+  assert.equal((await fetch(`${url}/api/directories?path=~`)).status, 200);
+  assert.equal(store.snapshot(), null);
+  assert.equal(store.revision, 0);
+  assert.equal((await fetch(`${url}/api/directories`, { headers: { Origin: 'https://unrelated.example' } })).status, 403);
+  assert.equal((await fetch(`${url}/api/directories`, { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+});
+
+test('workspace responses publish recent history and removing entries changes only metadata', async t => {
+  const { path, url, post } = await setup(t);
+  const opened = await (await post('/api/repository', { path })).json();
+  assert.deepEqual(opened.recentRepositories.map(repo => repo.path), [opened.workspace.repo.path]);
+  const workspace = await (await fetch(url + '/api/workspace')).json();
+  assert.deepEqual(workspace.recentRepositories, opened.recentRepositories);
+  assert.equal((await post('/api/recent-repositories/remove', { path }, { Origin: 'https://unrelated.example' })).status, 403);
+  const removed = await (await post('/api/recent-repositories/remove', { path: opened.workspace.repo.path })).json();
+  assert.deepEqual(removed.recentRepositories, []);
+  assert.equal(removed.workspace.repo.path, opened.workspace.repo.path);
+  assert.equal(removed.revision, opened.revision + 1);
+  assert.equal((await post('/api/recent-repositories/remove', {})).status, 400);
 });
 
 test('workspace events report revisions without rescanning Git and reject cross-site readers', async t => {

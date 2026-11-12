@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm, symlink, realpath } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { mkdtemp, mkdir, writeFile, readFile, rm, symlink, realpath } from 'node:fs/promises';
+import { homedir, tmpdir } from 'node:os';
+import { join, relative } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { readRepository } from '../server/git.js';
 import { WorkspaceStore } from '../server/workspace.js';
@@ -140,4 +140,68 @@ test('repository selection and a valid plan survive a restart and reopening the 
   assert.equal(restored.snapshot().groups[0].title, 'Failure state');
   await restored.connect(path);
   assert.equal(restored.snapshot().groups[0]?.title, 'Failure state');
+});
+
+test('recent repositories deduplicate repository roots and exclude failed connections', async t => {
+  const first = await fixture(t);
+  const second = await fixture(t);
+  const store = new WorkspaceStore();
+  await store.connect(first);
+  await store.connect(second);
+  await store.connect(join(first, 'pipeline'));
+  await assert.rejects(store.connect(join(first, 'missing')));
+  assert.deepEqual(store.recentRepositories.map(repo => repo.path), [first, second]);
+  assert.equal(store.snapshot().repo.path, first);
+});
+
+test('recent history keeps ten entries and survives disconnect and restart', async t => {
+  const roots = [];
+  const stateFile = join(await fixture(t), '.ordiff/workspace.json');
+  const store = new WorkspaceStore({ stateFile });
+  for (let i = 0; i < 11; i++) {
+    const path = await fixture(t);
+    roots.push(path);
+    await store.connect(path);
+  }
+  await store.disconnect();
+  const restored = new WorkspaceStore({ stateFile });
+  await restored.restore();
+  assert.equal(restored.snapshot(), null);
+  assert.deepEqual(restored.recentRepositories.map(repo => repo.path), roots.slice(1).reverse());
+});
+
+test('removing an active recent repository preserves the workspace and stays removed on restore', async t => {
+  const path = await fixture(t);
+  const stateFile = join(path, '.ordiff/workspace.json');
+  const store = new WorkspaceStore({ stateFile });
+  await store.connect(path);
+  const revision = store.revision;
+  await store.removeRecentRepository(path);
+  assert.equal(store.revision, revision + 1);
+  assert.equal(store.snapshot().repo.path, path);
+  const restored = new WorkspaceStore({ stateFile });
+  await restored.restore();
+  assert.equal(restored.snapshot().repo.path, path);
+  assert.deepEqual(restored.recentRepositories, []);
+  assert.deepEqual(JSON.parse(await readFile(stateFile, 'utf8')).recentRepositories, []);
+});
+
+test('legacy state seeds history but inaccessible active paths do not discard saved history', async t => {
+  const path = await fixture(t);
+  const stateFile = join(path, 'workspace.json');
+  await writeFile(stateFile, JSON.stringify({ path }));
+  const legacy = new WorkspaceStore({ stateFile });
+  await legacy.restore();
+  assert.equal(legacy.recentRepositories[0].path, path);
+  await writeFile(stateFile, JSON.stringify({ path: join(path, 'missing'), recentRepositories: [{ name: 'saved', path }] }));
+  const restored = new WorkspaceStore({ stateFile });
+  await restored.restore();
+  assert.equal(restored.snapshot(), null);
+  assert.deepEqual(restored.recentRepositories, [{ name: 'saved', path }]);
+});
+
+test('home-relative repository paths resolve to their canonical root', async t => {
+  const path = await fixture(t);
+  const snapshot = await readRepository(`~/${relative(homedir(), path)}`);
+  assert.equal(snapshot.repo.path, path);
 });

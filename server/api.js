@@ -2,6 +2,7 @@ import { fileURLToPath } from 'node:url';
 import { WorkspaceStore } from './workspace.js';
 import { reviewPlanSchema } from './schema.js';
 import { readPreviewFile, readMarkdownImage, extractWordText } from './files.js';
+import { readDirectory } from './directories.js';
 
 function reply(response, status, data) {
   response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -24,6 +25,9 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
     if (request.headers['sec-fetch-site'] === 'cross-site') return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
     try {
       await ready;
+      if (request.method === 'GET' && url.pathname === '/api/directories') {
+        return reply(response, 200, await readDirectory(url.searchParams.get('path') || '~', url.searchParams.get('showHidden') === 'true'));
+      }
       if (request.method === 'GET' && url.pathname === '/api/events') {
         if (response.destroyed) return;
         response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
@@ -54,16 +58,17 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
       if (request.method === 'GET' && url.pathname === '/api/workspace') {
         if (url.searchParams.get('since') === String(store.revision)) return reply(response, 200, { revision: store.revision, unchanged: true });
         const mcpConfig = { mcpServers: { ordiff: { command: process.execPath, args: [fileURLToPath(new URL('./mcp.js', import.meta.url))], env: { ORDIFF_URL: url.origin } } } };
-        return reply(response, 200, { revision: store.revision, workspace: store.snapshot(), defaultPath, mcpConfig });
+        return reply(response, 200, { revision: store.revision, workspace: store.snapshot(), recentRepositories: store.recentRepositories, defaultPath, mcpConfig });
       }
       if (request.method !== 'POST') return reply(response, 405, { error: 'Method not allowed.' });
       const body = await readJson(request);
       if (url.pathname === '/api/repository') await store.connect(body.path);
+      else if (url.pathname === '/api/recent-repositories/remove') await store.removeRecentRepository(body.path);
       else if (url.pathname === '/api/disconnect') await store.disconnect();
       else if (url.pathname === '/api/refresh' || url.pathname === '/api/context') await store.refresh();
       else if (url.pathname === '/api/review-plan') await store.submitPlan(reviewPlanSchema.parse(body));
       else return reply(response, 404, { error: 'Not found.' });
-      return reply(response, 200, { revision: store.revision, workspace: store.snapshot() });
+      return reply(response, 200, { revision: store.revision, workspace: store.snapshot(), recentRepositories: store.recentRepositories });
     } catch (error) {
       const message = error.name === 'ZodError' ? 'The review plan is not valid. Check its groups, steps, and explanations.' : error.message;
       return reply(response, error.status || (/diff changed/.test(message) ? 409 : 400), { error: message });

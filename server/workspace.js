@@ -1,36 +1,72 @@
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import { dirname, isAbsolute } from 'node:path';
 import { readRepository } from './git.js';
 import { EventEmitter } from 'node:events';
 
 export class WorkspaceStore extends EventEmitter {
   #current = null;
   #plan = null;
+  #recent = [];
   #queue = Promise.resolve();
   revision = 0;
   constructor({ stateFile = null } = {}) { super(); this.stateFile = stateFile; }
   snapshot() { return this.#current; }
+  get recentRepositories() { return this.#recent.map(repo => ({ ...repo })); }
   run(operation) { const pending = this.#queue.then(operation); this.#queue = pending.catch(() => {}); return pending; }
   async restore() {
     if (!this.stateFile) return;
-    try { const saved = JSON.parse(await readFile(this.stateFile, 'utf8')); if (!saved.path) return; await this.connect(saved.path); if (saved.plan?.version === this.#current.version) await this.submitPlan(saved.plan); }
+    try {
+      const saved = JSON.parse(await readFile(this.stateFile, 'utf8'));
+      const history = Array.isArray(saved.recentRepositories) ? saved.recentRepositories : [];
+      const seen = new Set();
+      this.#recent = history.filter(repo => {
+        if (!repo || typeof repo.path !== 'string' || !isAbsolute(repo.path) || typeof repo.name !== 'string' || !repo.name || seen.has(repo.path)) return false;
+        seen.add(repo.path); return true;
+      }).slice(0, 10).map(({ name, path }) => ({ name, path }));
+      if (!saved.path) return;
+      await this.connect(saved.path, { recordRecent: !Array.isArray(saved.recentRepositories) });
+      if (saved.plan?.version === this.#current.version) await this.submitPlan(saved.plan);
+    }
     catch { /* Missing or obsolete state returns to onboarding. */ }
   }
   async persist() {
     if (this.stateFile) {
       await mkdir(dirname(this.stateFile), { recursive: true });
       const temporary = `${this.stateFile}.tmp`;
-      await writeFile(temporary, JSON.stringify({ path: this.#current?.repo.path || null, plan: this.#plan }), { mode: 0o600 });
+      await writeFile(temporary, JSON.stringify({ path: this.#current?.repo.path || null, plan: this.#plan, recentRepositories: this.#recent }), { mode: 0o600 });
       await rename(temporary, this.stateFile);
     }
     this.emit('revision', this.revision);
   }
-  connect(path) {
+  connect(path, { recordRecent = true } = {}) {
     return this.run(async () => {
       const snapshot = await readRepository(path);
-      if (this.#current?.repo.path === snapshot.repo.path && this.#current.version === snapshot.version) return this.#current;
-      if (this.#current?.repo.path === snapshot.repo.path && this.#plan) snapshot.planStatus = 'stale';
-      this.#current = snapshot; this.#plan = null; this.revision++; await this.persist(); return snapshot;
+      const previous = { current: this.#current, plan: this.#plan, recent: this.#recent, revision: this.revision };
+      const same = this.#current?.repo.path === snapshot.repo.path && this.#current.version === snapshot.version;
+      if (!same) {
+        if (this.#current?.repo.path === snapshot.repo.path && this.#plan) snapshot.planStatus = 'stale';
+        this.#current = snapshot; this.#plan = null;
+      }
+      if (recordRecent) this.#recent = [{ name: snapshot.repo.name, path: snapshot.repo.path }, ...this.#recent.filter(repo => repo.path !== snapshot.repo.path)].slice(0, 10);
+      if (same && !recordRecent) return this.#current;
+      this.revision++;
+      try { await this.persist(); }
+      catch (error) {
+        this.#current = previous.current; this.#plan = previous.plan; this.#recent = previous.recent; this.revision = previous.revision;
+        throw error;
+      }
+      return this.#current;
+    });
+  }
+  removeRecentRepository(path) {
+    return this.run(async () => {
+      if (typeof path !== 'string' || !path) throw new Error('Choose a recent repository to remove.');
+      const previous = this.#recent;
+      this.#recent = previous.filter(repo => repo.path !== path);
+      if (this.#recent.length === previous.length) return;
+      this.revision++;
+      try { await this.persist(); }
+      catch (error) { this.#recent = previous; this.revision--; throw error; }
     });
   }
   disconnect() { return this.run(async () => { this.#current = null; this.#plan = null; this.revision++; await this.persist(); }); }
