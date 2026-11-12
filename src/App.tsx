@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useReview } from "./hooks/use-review";
 import { Sidebar } from "./components/sidebar";
 import { ReviewContent, ReviewFooter } from "./components/review-content";
@@ -15,7 +22,26 @@ import { Toolbar } from "./components/toolbar";
 import { FeedbackRail } from "./components/feedback-rail";
 import type { ReviewAction } from "./types";
 
+const TextDiff = lazy(() => import("./tools/text-diff"));
+
 export function App() {
+  if (/^\/tools\/text-diff\/?$/.test(window.location.pathname)) {
+    return (
+      <Suspense
+        fallback={
+          <p className="utility-loading" role="status">
+            Opening text diff…
+          </p>
+        }
+      >
+        <TextDiff />
+      </Suspense>
+    );
+  }
+  return <ReviewWorkspace />;
+}
+
+function ReviewWorkspace() {
   const review = useReview();
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [overflowOpen, setOverflowOpen] = useState(false);
