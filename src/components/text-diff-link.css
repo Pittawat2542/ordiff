@@ -1,0 +1,50 @@
+@layer components {
+  .text-diff-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--secondary);
+    font-size: 12px;
+    text-decoration: none;
+    min-block-size: 36px;
+    padding: 6px 10px;
+    border-radius: var(--radius-control);
+    white-space: nowrap;
+  }
+  .text-diff-link:hover {
+    color: var(--strong);
+    background: var(--hairline);
+  }
+  .text-diff-link .icon {
+    inline-size: 15px;
+    block-size: 15px;
+  }
+  .text-diff-link .icon:last-child {
+    inline-size: 12px;
+    block-size: 12px;
+  }
+  .welcome-utility {
+    margin-block-start: 24px;
+  }
+  .welcome-utility .text-diff-link {
+    color: var(--muted);
+  }
+  .toolbar-utilities > .text-diff-link {
+    border-inline-start: 1px solid var(--border);
+    border-radius: 0;
+    margin-inline-start: 4px;
+  }
+  .toolbar-utilities > .text-diff-link span,
+  .toolbar-utilities > .text-diff-link .icon:last-child {
+    display: none;
+  }
+  .utility-loading {
+    padding: 32px;
+    color: var(--muted);
+  }
+  @media (pointer: coarse) {
+    .text-diff-link {
+      min-block-size: 44px;
+    }
+  }
+}

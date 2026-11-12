@@ -96,6 +96,35 @@ async function sample() {
   return view;
 }
 
+test("welcome and review toolbar offer the text diff utility in a new tab", async () => {
+  render(<App />);
+  await screen.findByRole("textbox", { name: "Local repository" });
+  const links = screen.getAllByRole("link", { name: /Text diff utility/ });
+  expect(links).toHaveLength(2);
+  for (const link of links) {
+    expect(link).toHaveAttribute("href", "/tools/text-diff");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+    expect(link).toHaveAccessibleName(/opens in a new tab/);
+  }
+  fireEvent.click(
+    screen.getByRole("button", { name: /Try the sample review/ }),
+  );
+  expect(screen.getByRole("link", { name: /Text diff utility/ })).toBeVisible();
+});
+
+test("compact toolbar exposes the utility link inside More", async () => {
+  toolbarWidth(640);
+  await sample();
+  expect(
+    screen.queryByRole("link", { name: /Text diff utility/ }),
+  ).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  expect(
+    screen.getByRole("link", { name: /Text diff utility/ }),
+  ).toHaveAttribute("target", "_blank");
+});
+
 test("help keeps its contents during exit instead of collapsing to an empty sheet", async () => {
   await sample();
   fireEvent.click(

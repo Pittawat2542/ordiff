@@ -13,6 +13,7 @@ import { Button } from "./ui/button";
 import { Brand } from "./brand";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
+import { TextDiffLink } from "./text-diff-link";
 
 export function NativeDialog({
   open,
@@ -192,6 +193,9 @@ export function Onboarding({ review }: { review: ReviewController }) {
         <span>
           <i>3</i>Build your prompt
         </span>
+      </div>
+      <div className="welcome-utility">
+        <TextDiffLink />
       </div>
     </section>
   );

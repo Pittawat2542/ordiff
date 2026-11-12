@@ -5,6 +5,7 @@ import { Icon } from "../icons";
 import { Brand } from "./brand";
 import { Button } from "./ui/button";
 import type { DialogKind } from "./dialogs";
+import { TextDiffLink } from "./text-diff-link";
 
 export function Toolbar({
   review,
@@ -85,7 +86,7 @@ export function Toolbar({
     }
     if (overflowOpen) {
       popover
-        .querySelector<HTMLButtonElement>("button:not(:disabled)")
+        .querySelector<HTMLElement>("button:not(:disabled), a[href]")
         ?.focus();
       window.addEventListener("resize", position);
       return () => window.removeEventListener("resize", position);
@@ -269,10 +270,14 @@ export function Toolbar({
             >
               <p className="toolbar-menu-heading">Workspace actions</p>
               {actions}
+              <TextDiffLink compact />
             </div>
           </div>
         ) : (
-          <div className="toolbar-utilities">{actions}</div>
+          <div className="toolbar-utilities">
+            {actions}
+            <TextDiffLink />
+          </div>
         )}
       </div>
     </header>
