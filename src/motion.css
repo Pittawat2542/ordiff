@@ -1,0 +1,192 @@
+@layer components {
+  /* Quiet state feedback remains available with reduced motion. */
+  :where(button, a, input, textarea, select, summary) {
+    transition:
+      background-color var(--motion-fast) var(--ease-settle),
+      border-color var(--motion-fast) var(--ease-settle),
+      color var(--motion-fast) var(--ease-settle),
+      box-shadow var(--motion-fast) var(--ease-settle);
+  }
+  .behavior-link[aria-expanded="true"] > .icon {
+    transform: rotate(90deg);
+  }
+
+  :is(
+    .sheet-dialog,
+    .navigation-dialog,
+    .feedback-drawer,
+    .toolbar-popover,
+    .feedback-rail
+  )[data-exiting] {
+    pointer-events: none;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Presence keeps surfaces in their native layer until their exit settles.
+       This also works in browsers without discrete display/overlay transitions. */
+    :is(
+      .sheet-dialog,
+      .navigation-dialog,
+      .feedback-drawer,
+      .toolbar-popover,
+      .feedback-rail
+    ) {
+      --surface-offset: translateY(8px) scale(0.99);
+      opacity: 1;
+      transform: none;
+      transition:
+        opacity 180ms var(--ease-settle),
+        transform var(--motion-panel) var(--ease-settle);
+    }
+    .navigation-dialog {
+      --surface-offset: translateX(-12px);
+    }
+    .feedback-drawer {
+      --surface-offset: translateX(12px);
+    }
+    .feedback-rail {
+      --surface-offset: translateX(8px);
+    }
+    .toolbar-popover {
+      --surface-offset: translateY(-4px) scale(0.98);
+      transform-origin: top right;
+      transition-duration: var(--motion-fast);
+    }
+
+    :is(
+      .sheet-dialog,
+      .navigation-dialog,
+      .feedback-drawer,
+      .toolbar-popover,
+      .feedback-rail
+    )[data-exiting] {
+      opacity: 0;
+      transform: var(--surface-offset);
+      transition-duration: var(--motion-exit);
+      transition-timing-function: var(--ease-exit);
+    }
+
+    @starting-style {
+      :is(.sheet-dialog, .navigation-dialog, .feedback-drawer)[open]:not(
+          [data-exiting]
+        ),
+      .toolbar-popover:not([hidden]):not([data-exiting]),
+      .feedback-rail:not([data-exiting]) {
+        opacity: 0;
+        transform: var(--surface-offset);
+      }
+    }
+
+    dialog::backdrop {
+      opacity: 1;
+      transition: opacity var(--motion-exit) var(--ease-settle);
+    }
+    dialog[data-exiting]::backdrop {
+      opacity: 0;
+    }
+    @starting-style {
+      dialog[open]::backdrop {
+        opacity: 0;
+      }
+    }
+
+    /* A small, reversible reveal; the diff itself never moves or fades. */
+    :is(.agent-context, .review-details) > summary > .icon:last-child,
+    .behavior-link > .icon {
+      transition: transform 160ms var(--ease-settle);
+    }
+    @supports (interpolate-size: allow-keywords) and
+      selector(details::details-content) {
+      :is(
+        .agent-context,
+        .review-details,
+        .prompt-file-details
+      )::details-content {
+        interpolate-size: allow-keywords;
+        contain: layout;
+        overflow: clip;
+        block-size: 0;
+        transition-property: block-size, content-visibility;
+        transition-duration: 180ms;
+        transition-timing-function: var(--ease-settle);
+        transition-behavior: allow-discrete;
+      }
+      :is(
+          .agent-context,
+          .review-details,
+          .prompt-file-details
+        )[open]::details-content {
+        block-size: auto;
+      }
+    }
+
+    :is(.primary-button, .secondary-button, .icon-button) {
+      transition-property:
+        background-color, border-color, color, box-shadow, transform;
+      transition-duration: var(--motion-fast);
+      transition-timing-function: var(--ease-settle);
+    }
+    :is(.primary-button, .secondary-button, .icon-button):active:not(
+        :disabled
+      ) {
+      transform: translateY(1px);
+      transition-duration: 80ms;
+    }
+    .build-prompt-button > .icon,
+    .welcome-secondary .text-button > .icon {
+      transition: transform var(--motion-fast) var(--ease-settle);
+    }
+    @media (hover: hover) {
+      .build-prompt-button:hover:not(:disabled) > .icon,
+      .welcome-secondary .text-button:hover > .icon {
+        transform: translateX(2px);
+      }
+    }
+
+    :is(.progress-track, .summary-progress) > span {
+      transition: width 180ms var(--ease-settle);
+    }
+    .toast {
+      transform: translateY(4px);
+      transition:
+        opacity var(--motion-fast),
+        transform 180ms var(--ease-settle),
+        visibility 0s var(--motion-fast);
+    }
+    .toast.visible {
+      transform: none;
+      transition-delay: 0s;
+    }
+
+    :is(.onboarding, .finished-state, .empty-state) {
+      animation: state-arrive 180ms var(--ease-settle) both;
+    }
+    @keyframes state-arrive {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+      to {
+        opacity: 1;
+        transform: none;
+      }
+    }
+    .is-refreshing .icon {
+      animation: refresh-turn 900ms linear infinite;
+    }
+    @keyframes refresh-turn {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @media (min-width: 1280px) {
+      .app-shell {
+        transition: grid-template-columns 200ms var(--ease-settle);
+      }
+      .app-shell:not(.has-feedback) {
+        transition-duration: var(--motion-exit);
+      }
+    }
+  }
+}

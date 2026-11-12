@@ -3,6 +3,7 @@ import { Icon } from "../icons";
 import type { ReviewController } from "../hooks/use-review";
 import type { ReviewAction, ReviewFilter, ReviewSection } from "../types";
 import { Button } from "./ui/button";
+import { Brand } from "./brand";
 import { Input } from "./ui/input";
 
 export function Sidebar({
@@ -72,14 +73,7 @@ export function Sidebar({
   return (
     <aside className="sidebar" aria-label="Review navigation">
       <div className="brand-row">
-        <div className="brand">
-          <span className="brand-mark">
-            <Icon name="branch" />
-          </span>
-          <span>
-            Ordiff<span className="brand-period">.</span>
-          </span>
-        </div>
+        <Brand wordmark />
         <span className="brand-caption">REVIEW WORKSPACE</span>
         <Button
           variant="ghost"
@@ -232,7 +226,7 @@ export function Sidebar({
                         {p.reviewed} / {p.total} reviewed
                       </span>
                     </span>
-                    <Icon name={selected ? "down" : "chevron"} />
+                    <Icon name="chevron" />
                   </Button>
                   {selected && (
                     <nav

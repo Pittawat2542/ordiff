@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useReview } from "./hooks/use-review";
-import { Icon } from "./icons";
 import { Sidebar } from "./components/sidebar";
 import { ReviewContent, ReviewFooter } from "./components/review-content";
 import {
@@ -12,11 +11,14 @@ import {
 import { Button } from "./components/ui/button";
 import { FeedbackPanel } from "./components/feedback-panel";
 import { PromptBuilder } from "./components/prompt-builder";
+import { Toolbar } from "./components/toolbar";
+import { FeedbackRail } from "./components/feedback-rail";
 import type { ReviewAction } from "./types";
 
 export function App() {
   const review = useReview();
   const [dialog, setDialog] = useState<DialogKind | null>(null);
+  const [overflowOpen, setOverflowOpen] = useState(false);
   const [navOpen, setNavOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [promptOpen, setPromptOpen] = useState(false);
@@ -55,6 +57,7 @@ export function App() {
     setFeedbackTab("file");
   }, [workspace?.repo.path]);
   function buildPrompt() {
+    setOverflowOpen(false);
     setDialog(null);
     setNavOpen(false);
     if (!wide) setFeedbackOpen(false);
@@ -101,10 +104,12 @@ export function App() {
     }
   }, [focusSearch, navOpen]);
   function closeDialogs() {
+    setOverflowOpen(false);
     setDialog(null);
     setNavOpen(false);
   }
   function openDialog(kind: DialogKind) {
+    setOverflowOpen(false);
     setNavOpen(false);
     setFeedbackOpen(false);
     setPromptOpen(false);
@@ -126,6 +131,7 @@ export function App() {
   }
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
+      if (overflowOpen) return;
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key.toLowerCase() === "k" &&
@@ -191,12 +197,18 @@ export function App() {
       visible={!mobile || navOpen}
     />
   );
-  const feedbackPanel = workspace && feedbackOpen && (
+  const feedbackPanel = workspace && (
     <FeedbackPanel
       review={review}
       tab={feedbackTab}
       setTab={setFeedbackTab}
-      close={() => setFeedbackOpen(false)}
+      close={() => {
+        setFeedbackOpen(false);
+        if (wide)
+          document
+            .querySelector<HTMLButtonElement>(".feedback-toggle")
+            ?.focus();
+      }}
       addComment={addComment}
       focusId={commentFocusId}
       buildPrompt={buildPrompt}
@@ -212,115 +224,27 @@ export function App() {
       >
         {!mobile && sidebar}
         <main className="workspace">
-          <header className="toolbar">
-            <div className="toolbar-location">
-              <Button
-                variant="ghost"
-                className="mobile-only"
-
-                aria-label="Open navigation"
-                aria-controls="navigation-dialog"
-                aria-expanded={navOpen}
-                hidden={!workspace}
-                onClick={() => {
-                  setFeedbackOpen(false);
-                  setNavOpen(true);
-                }}
-              >
-                <Icon name="menu" />
-              </Button>
-              <span className="toolbar-repo">
-                {workspace?.repo.name || "Ordiff"}
-              </span>
-              <span className="toolbar-slash">/</span>
-              <span className="toolbar-context">
-                {review.mode === "demo"
-                  ? "Sample review"
-                  : workspace?.repo.branch || "A clearer way to review"}
-              </span>
-            </div>
-            <div className="toolbar-actions">
-              {workspace && (
-                <>
-                  <Button
-                    variant="secondary"
-                    className="feedback-toggle"
-                    aria-label={`Feedback: ${review.feedback.count} ${review.feedback.count === 1 ? "comment" : "comments"}`}
-                    aria-expanded={feedbackOpen}
-                    aria-controls={wide ? "feedback-rail" : "feedback-dialog"}
-                    onClick={() => {
-                      setDialog(null);
-                      setNavOpen(false);
-                      setFeedbackOpen((value) => !value);
-                    }}
-                  >
-                    <Icon name="note" />
-                    <span>Feedback</span>
-                    <span className="feedback-count">
-                      {review.feedback.count}
-                    </span>
-                  </Button>
-                  <Button className="build-prompt-button" onClick={buildPrompt}>
-                    Build prompt
-                    <Icon name="arrow" />
-                  </Button>
-                  <Button
-                    variant="unstyled"
-                    className="mcp-button"
-                    aria-label={
-                      workspace.planStatus === "current"
-                        ? "Review path ready"
-                        : "Connect agent"
-                    }
-                    title={
-                      workspace.planStatus === "current"
-                        ? "Review path ready"
-                        : "Connect agent"
-                    }
-                    onClick={() => openDialog("mcp")}
-                  >
-                    <span>
-                      <Icon name="sparkle" />
-                    </span>
-                    <span>
-                      {workspace.planStatus === "current"
-                        ? "Review path ready"
-                        : "Connect agent"}
-                    </span>
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    className={review.busy ? "is-refreshing" : ""}
-
-                    aria-label="Refresh diff"
-                    title="Refresh Git changes"
-                    disabled={review.busy}
-                    onClick={() => void review.refreshDiff()}
-                  >
-                    <Icon name="retry" />
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="ghost"
-
-                aria-label={`Switch to ${review.theme === "light" ? "dark" : "light"} appearance`}
-                title="Switch appearance"
-                onClick={review.toggleTheme}
-              >
-                <Icon name={review.theme === "light" ? "moon" : "sun"} />
-              </Button>
-              <Button
-                variant="ghost"
-
-                aria-label="Help and keyboard shortcuts"
-                title="Help (?)"
-                onClick={() => openDialog("help")}
-              >
-                <Icon name="keyboard" />
-              </Button>
-            </div>
-          </header>
+          <Toolbar
+            review={review}
+            navOpen={navOpen}
+            feedbackOpen={feedbackOpen}
+            wide={wide}
+            overflowOpen={overflowOpen}
+            setOverflowOpen={setOverflowOpen}
+            openNavigation={() => {
+              setOverflowOpen(false);
+              setFeedbackOpen(false);
+              setNavOpen(true);
+            }}
+            toggleFeedback={() => {
+              setOverflowOpen(false);
+              setDialog(null);
+              setNavOpen(false);
+              setFeedbackOpen((value) => !value);
+            }}
+            buildPrompt={buildPrompt}
+            openDialog={openDialog}
+          />
           <div className="review-scroll" ref={scrollRef}>
             <div id="review-content" tabIndex={-1}>
               {workspace ? (
@@ -348,19 +272,13 @@ export function App() {
             />
           </div>
         </main>
-        {wide && feedbackOpen && (
-          <aside
-            className="feedback-rail"
-            id="feedback-rail"
-            aria-label="Review feedback"
-          >
-            {feedbackPanel}
-          </aside>
+        {wide && (
+          <FeedbackRail open={feedbackOpen}>{feedbackPanel}</FeedbackRail>
         )}
       </div>
       {!wide && (
         <NativeDialog
-          open={feedbackOpen}
+          open={feedbackOpen && !promptOpen}
           onClose={() => setFeedbackOpen(false)}
           label="Review feedback"
           className="feedback-drawer"

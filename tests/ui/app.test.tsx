@@ -96,6 +96,183 @@ async function sample() {
   return view;
 }
 
+test("help keeps its contents during exit instead of collapsing to an empty sheet", async () => {
+  await sample();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Help and keyboard shortcuts" }),
+  );
+  const dialog = screen.getByRole("dialog", { name: "A clearer review." });
+  let finish!: () => void;
+  const finished = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  Object.defineProperty(dialog, "getAnimations", {
+    value: () => [{ finished }],
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Close help" }));
+  expect(
+    within(dialog).getByRole("heading", { name: "A clearer review." }),
+  ).toBeVisible();
+  await act(async () => {
+    finish();
+    await finished;
+  });
+  await waitFor(() => expect(dialog).not.toHaveAttribute("open"));
+});
+
+// ResizeObserver supplies layout measurements that jsdom cannot calculate.
+function toolbarWidth(initialWidth: number) {
+  let notify: (width: number) => void = () => {};
+  let observed: Element = document.body;
+  vi.stubGlobal(
+    "ResizeObserver",
+    class implements ResizeObserver {
+      constructor(callback: ResizeObserverCallback) {
+        notify = (width) =>
+          callback(
+            [
+              {
+                target: observed,
+                contentRect: new DOMRect(0, 0, width - 34, 54),
+                borderBoxSize: [{ inlineSize: width, blockSize: 56 }],
+                contentBoxSize: [{ inlineSize: width - 34, blockSize: 54 }],
+                devicePixelContentBoxSize: [
+                  { inlineSize: width - 34, blockSize: 54 },
+                ],
+              },
+            ],
+            this,
+          );
+      }
+      observe(target: Element) {
+        observed = target;
+        notify(initialWidth);
+      }
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  return (width: number) => act(() => notify(width));
+}
+
+test("compact toolbar keeps primary actions visible and runs appearance actions from More", async () => {
+  toolbarWidth(640);
+  await sample();
+  expect(screen.getByRole("button", { name: "Build prompt" })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Feedback: 0 comments" }),
+  ).toBeVisible();
+  expect(
+    screen.queryByRole("button", { name: "Switch to dark appearance" }),
+  ).not.toBeInTheDocument();
+  const more = screen.getByRole("button", { name: "More actions" });
+  fireEvent.click(more);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Switch to dark appearance" }),
+  );
+  expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+  expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(more).toHaveFocus();
+});
+
+test("toolbar measures the whole workspace rather than subtracting its own padding", async () => {
+  toolbarWidth(740);
+  await sample();
+  expect(
+    screen.queryByRole("button", { name: "More actions" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Connect agent" })).toBeVisible();
+});
+
+test("More dismisses with Escape and suppresses review shortcuts while open", async () => {
+  toolbarWidth(640);
+  await sample();
+  const more = screen.getByRole("button", { name: "More actions" });
+  fireEvent.click(more);
+  const refresh = screen.getByRole("button", { name: "Refresh diff" });
+  refresh.focus();
+  fireEvent.keyDown(refresh, { key: "r" });
+  expect(
+    screen.getByRole("button", {
+      name: "Review summary: 0 of 10 sections reviewed",
+    }),
+  ).toBeInTheDocument();
+  fireEvent.keyDown(refresh, { key: "Escape" });
+  expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(more).toHaveFocus();
+});
+
+test("More opens help and releases its popover before the dialog receives focus", async () => {
+  toolbarWidth(640);
+  await sample();
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Help and keyboard shortcuts" }),
+  );
+  expect(
+    screen.getByRole("dialog", { name: "A clearer review." }),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: "More actions" })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+});
+
+test("widening the workspace dismisses More and makes its actions available inline", async () => {
+  const resize = toolbarWidth(640);
+  await sample();
+  fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+  resize(900);
+  expect(
+    screen.queryByRole("button", { name: "More actions" }),
+  ).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Connect agent" })).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Switch to dark appearance" }),
+  ).toBeVisible();
+});
+
+test("More closes when keyboard focus leaves its trigger and actions", async () => {
+  toolbarWidth(640);
+  await sample();
+  const more = screen.getByRole("button", { name: "More actions" });
+  fireEvent.click(more);
+  const primary = screen.getByRole("button", { name: "Build prompt" });
+  act(() => {
+    more.focus();
+    primary.focus();
+  });
+  expect(more).toHaveAttribute("aria-expanded", "false");
+  expect(primary).toHaveFocus();
+});
+
+test("resizing an open prompt builder never places the feedback drawer above it", async () => {
+  const media = Object.assign(new EventTarget(), {
+    matches: true,
+    media: "(min-width: 1280px)",
+    onchange: null,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+  });
+  const original = window.matchMedia;
+  vi.stubGlobal("matchMedia", (query: string) =>
+    query === media.media ? media : original(query),
+  );
+  await sample();
+  fireEvent.click(screen.getByRole("button", { name: "Feedback: 0 comments" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "Build prompt" })[0]);
+  act(() => {
+    media.matches = false;
+    media.dispatchEvent(new Event("change"));
+  });
+  expect(
+    screen.getByRole("dialog", { name: "Build your next prompt" }),
+  ).toHaveAttribute("open");
+  expect(document.getElementById("feedback-dialog")).not.toHaveAttribute(
+    "open",
+  );
+});
+
 test("editing a review note survives appearance updates without replacing the focused editor", async () => {
   await sample();
   fireEvent.click(screen.getByText("Notes & checklist"));

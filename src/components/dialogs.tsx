@@ -1,8 +1,16 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { useExitPresence } from "../hooks/use-exit-presence";
 import { Icon } from "../icons";
 import type { ReviewController } from "../hooks/use-review";
 import type { ReviewAction } from "../types";
 import { Button } from "./ui/button";
+import { Brand } from "./brand";
 import { Input } from "./ui/input";
 import { Textarea } from "./ui/textarea";
 
@@ -25,12 +33,13 @@ export function NativeDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const pressedOutside = useRef(false);
-  useEffect(() => {
+  const { present, exiting } = useExitPresence(open, ref);
+  useLayoutEffect(() => {
     const dialog = ref.current;
     if (!dialog) return;
-    if (open && !dialog.open) dialog.showModal();
-    else if (!open && dialog.open) dialog.close();
-  }, [open]);
+    if (present && !dialog.open) dialog.showModal();
+    else if (!present && dialog.open) dialog.close();
+  }, [present]);
   function outside(x: number, y: number) {
     const rect = ref.current?.getBoundingClientRect();
     return (
@@ -45,18 +54,31 @@ export function NativeDialog({
       className={className}
       aria-labelledby={titleId}
       aria-label={label}
-      closedby="any"
-      onClose={onClose}
+      closedby="closerequest"
+      data-exiting={exiting ? "" : undefined}
+      onClose={(event) => {
+        if (open && !event.currentTarget.open) onClose();
+      }}
+      onCancel={(event) => {
+        event.preventDefault();
+        if (open) onClose();
+      }}
+      onKeyDownCapture={(event) => {
+        if (exiting) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }}
       onPointerDown={(event) => {
         pressedOutside.current = outside(event.clientX, event.clientY);
       }}
       onPointerUp={(event) => {
         if (pressedOutside.current && outside(event.clientX, event.clientY))
-          ref.current?.close();
+          onClose();
         pressedOutside.current = false;
       }}
     >
-      {children}
+      {present ? children : null}
     </dialog>
   );
 }
@@ -141,7 +163,7 @@ export function Onboarding({ review }: { review: ReviewController }) {
   return (
     <section className="onboarding">
       <div className="welcome-mark">
-        <Icon name="branch" />
+        <Brand />
       </div>
       <p className="eyebrow">A LITTLE LESS TO HOLD IN YOUR HEAD</p>
       <h1>
@@ -151,8 +173,7 @@ export function Onboarding({ review }: { review: ReviewController }) {
       </h1>
       <p className="welcome-description">
         A calmer review starts with your repository.
-        <br />
-        Follow the changes. Give your agent a clear next step.
+        <br /> Follow the changes. Give your agent a clear next step.
       </p>
       <RepositoryForm review={review} />
       <div className="welcome-secondary">
@@ -197,41 +218,45 @@ export function AppDialog({
   navigate: (action: ReviewAction) => void;
   buildPrompt: () => void;
 }) {
+  // Keep the last sheet's contents while its controlled open state exits.
+  const [lastKind, setLastKind] = useState(kind);
+  if (kind && kind !== lastKind) setLastKind(kind);
+  const displayKind = kind || lastKind;
   const icon =
-    kind === "repository"
+    displayKind === "repository"
       ? "repo"
-      : kind === "mcp"
+      : displayKind === "mcp"
         ? "sparkle"
-        : kind === "summary"
+        : displayKind === "summary"
           ? "check"
           : "keyboard";
   const closeLabel =
-    kind === "repository"
+    displayKind === "repository"
       ? "Close repository settings"
-      : kind === "mcp"
+      : displayKind === "mcp"
         ? "Close agent setup"
-        : kind === "summary"
+        : displayKind === "summary"
           ? "Close summary"
           : "Close help";
   return (
     <NativeDialog
       open={!!kind}
       onClose={close}
-      titleId={kind ? titles[kind] : undefined}
-      className={`sheet-dialog ${kind === "mcp" ? "mcp-dialog" : ""}`}
-      id={kind ? `${kind}-dialog` : undefined}
+      titleId={displayKind ? titles[displayKind] : undefined}
+      className={`sheet-dialog ${displayKind === "mcp" ? "mcp-dialog" : ""}`}
+      id={displayKind ? `${displayKind}-dialog` : undefined}
     >
-      {kind && (
+      {displayKind && (
         <>
           <div className="dialog-heading flex items-center justify-between">
             <span className="dialog-emblem">
-              {kind === "help" ? "?" : <Icon name={icon} />}
+              {displayKind === "help" ? "?" : <Icon name={icon} />}
             </span>
             <Button variant="ghost" aria-label={closeLabel} onClick={close}>
               <Icon name="close" />
             </Button>
           </div>
-          {kind === "repository" && (
+          {displayKind === "repository" && (
             <>
               <h2 id="repository-title">Open a repository</h2>
               <p className="dialog-intro">
@@ -254,10 +279,10 @@ export function AppDialog({
               )}
             </>
           )}
-          {kind === "mcp" && (
+          {displayKind === "mcp" && (
             <McpSetup review={review} openRepository={openRepository} />
           )}
-          {kind === "summary" && (
+          {displayKind === "summary" && (
             <ReviewSummary
               review={review}
               close={close}
@@ -265,7 +290,7 @@ export function AppDialog({
               buildPrompt={buildPrompt}
             />
           )}
-          {kind === "help" && (
+          {displayKind === "help" && (
             <>
               <h2 id="help-title">A clearer review.</h2>
               <p className="dialog-intro">

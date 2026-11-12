@@ -8,6 +8,7 @@ import "@fontsource/ibm-plex-mono/latin-400.css";
 import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./style.css";
 import "./feedback.css";
+import "./motion.css";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
