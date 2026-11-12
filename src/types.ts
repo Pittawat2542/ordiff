@@ -3,6 +3,35 @@ export type ReviewView = "behavior" | "all" | "ungrouped";
 export type ReviewFilter = "all" | "reviewed" | "unreviewed";
 export type ReviewStatus = "clean" | "complete" | "reviewing";
 
+export type FeedbackIntent = "change" | "keep" | "note";
+export interface FeedbackSection {
+  id: string;
+  version: string;
+  hunk: string;
+  oldRange?: [number, number];
+  newRange?: [number, number];
+}
+export interface FeedbackComment {
+  id: string;
+  path: string;
+  text: string;
+  intent: FeedbackIntent;
+  section?: FeedbackSection;
+}
+export interface FeedbackState {
+  comments: FeedbackComment[];
+  general: string;
+}
+export type FeedbackAction =
+  | { type: "add"; comment: FeedbackComment }
+  | {
+      type: "update";
+      id: string;
+      patch: Partial<Pick<FeedbackComment, "text" | "intent" | "section">>;
+    }
+  | { type: "remove"; id: string }
+  | { type: "general"; text: string };
+
 export type PreviewKind =
   | "image"
   | "pdf"

@@ -26,6 +26,7 @@ interface DiffViewProps {
   expanded?: boolean;
   onToggleContext?: () => void;
   version?: string;
+  onAddComment?: (scope: "file" | "section") => void;
 }
 export const DiffView = memo(function DiffView(props: DiffViewProps) {
   return (
@@ -40,6 +41,7 @@ function DiffPanel({
   expanded = false,
   onToggleContext,
   version,
+  onAddComment,
 }: DiffViewProps) {
   const kind = previewKind(section);
   const canPreview = kind !== "unsupported" || section.binary;
@@ -81,13 +83,36 @@ function DiffPanel({
           <span className="diff-counts" hidden={section.binary}>
             <ChangeCounts sections={[section]} />
           </span>
+          {onAddComment && (
+            <Button
+              variant="link"
+              className="add-file-comment"
+              aria-label="Add file comment"
+              onClick={() => onAddComment("file")}
+            >
+              <Icon name="plus" />
+              <span>Add comment</span>
+            </Button>
+          )}
         </div>
         <div className="hunk-heading">
           <span>
             <Icon name="code" />
             <span>{section.symbol || "Changed section"}</span>
           </span>
-          <span>{section.language}</span>
+          <span className="hunk-actions">
+            <span>{section.language}</span>
+            {onAddComment && (
+              <Button
+                variant="link"
+                aria-label="Add section comment"
+                onClick={() => onAddComment("section")}
+              >
+                <Icon name="plus" />
+                <span>Comment on section</span>
+              </Button>
+            )}
+          </span>
         </div>
       </div>
       {canPreview && (

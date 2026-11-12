@@ -14,6 +14,8 @@ export function ReviewContent({
   toggleContext,
   openRepository,
   restart,
+  addComment,
+  buildPrompt,
 }: {
   review: ReviewController;
   detailsOpen: boolean;
@@ -22,6 +24,8 @@ export function ReviewContent({
   toggleContext: (id: string) => void;
   openRepository: () => void;
   restart: () => void;
+  addComment: (scope: "file" | "section") => void;
+  buildPrompt: () => void;
 }) {
   const { workspace, model, state, mode } = review;
   const visible = model.getVisibleSections(state);
@@ -62,11 +66,17 @@ export function ReviewContent({
         </p>
         {complete && (
           <span className="completion-caption">
-            Your review progress is saved. Your repository is unchanged.
+            Your review progress is saved. Turn your feedback into the next
+            iteration.
           </span>
         )}
         <div className="finished-actions">
+          <Button onClick={buildPrompt}>
+            Build prompt
+            <Icon name="arrow" />
+          </Button>
           <Button
+            variant="secondary"
             onClick={() =>
               complete ? review.browse(true) : void review.refreshDiff()
             }
@@ -160,6 +170,7 @@ export function ReviewContent({
             version={workspace.version}
             expanded={expanded.has(active.id)}
             onToggleContext={toggleActiveContext}
+            onAddComment={addComment}
           />
           <ReviewNotes
             review={review}
@@ -214,9 +225,10 @@ function ReviewNotes({
         <span>
           {section.checklist.length ? "Notes & checklist" : "Review note"}
         </span>
-        {state.notes[section.id] && (
-          <span className="note-dot" aria-label="Has a note" />
-        )}
+        {review.feedback.state.comments.some(
+          (comment) =>
+            comment.section?.id === section.id && comment.text.trim(),
+        ) && <span className="note-dot" aria-label="Has a note" />}
         <Icon name="down" />
       </summary>
       <div className="details-body">
@@ -244,14 +256,19 @@ function ReviewNotes({
             rows={3}
             aria-label="Review note"
             placeholder="Something to come back to…"
-            value={state.notes[section.id] || ""}
-            onChange={(event) =>
+            value={
+              review.feedback.state.comments.find(
+                (comment) => comment.id === `legacy-${section.id}`,
+              )?.text || ""
+            }
+            onChange={(event) => {
+              review.feedback.setQuickNote(section, event.target.value);
               review.dispatch({
                 type: "note",
                 id: section.id,
                 text: event.target.value,
-              })
-            }
+              });
+            }}
           />
           <span className="note-save-label">
             {review.storageAvailable

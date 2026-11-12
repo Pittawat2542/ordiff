@@ -10,12 +10,21 @@ import {
   type DialogKind,
 } from "./components/dialogs";
 import { Button } from "./components/ui/button";
+import { FeedbackPanel } from "./components/feedback-panel";
+import { PromptBuilder } from "./components/prompt-builder";
 import type { ReviewAction } from "./types";
 
 export function App() {
   const review = useReview();
   const [dialog, setDialog] = useState<DialogKind | null>(null);
   const [navOpen, setNavOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [promptOpen, setPromptOpen] = useState(false);
+  const [feedbackTab, setFeedbackTab] = useState<"file" | "general">("file");
+  const [commentFocusId, setCommentFocusId] = useState<string | null>(null);
+  const [wide, setWide] = useState(
+    () => matchMedia("(min-width: 1280px)").matches,
+  );
   const [mobile, setMobile] = useState(
     () => matchMedia("(max-width: 1023px)").matches,
   );
@@ -33,6 +42,33 @@ export function App() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusAfterUndo = useRef(false);
   const { workspace, state, model } = review;
+  useEffect(() => {
+    const media = matchMedia("(min-width: 1280px)");
+    const sync = () => setWide(media.matches);
+    media.addEventListener("change", sync);
+    return () => media.removeEventListener("change", sync);
+  }, []);
+  useEffect(() => {
+    setFeedbackOpen(false);
+    setPromptOpen(false);
+    setCommentFocusId(null);
+    setFeedbackTab("file");
+  }, [workspace?.repo.path]);
+  function buildPrompt() {
+    setDialog(null);
+    setNavOpen(false);
+    if (!wide) setFeedbackOpen(false);
+    setPromptOpen(true);
+  }
+  function addComment(scope: "file" | "section") {
+    const active = model.getActiveSection(state);
+    if (!active) return;
+    setCommentFocusId(review.feedback.add(active, scope));
+    setFeedbackTab("file");
+    setFeedbackOpen(true);
+    setDialog(null);
+    setNavOpen(false);
+  }
   useEffect(() => {
     if (!focusAfterUndo.current) return;
     focusAfterUndo.current = false;
@@ -70,6 +106,8 @@ export function App() {
   }
   function openDialog(kind: DialogKind) {
     setNavOpen(false);
+    setFeedbackOpen(false);
+    setPromptOpen(false);
     setDialog(kind);
   }
   function navigate(action: ReviewAction) {
@@ -91,7 +129,10 @@ export function App() {
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key.toLowerCase() === "k" &&
-        workspace
+        workspace &&
+        !promptOpen &&
+        !(feedbackOpen && !wide) &&
+        !dialog
       ) {
         event.preventDefault();
         const isMobile = matchMedia("(max-width: 1023px)").matches;
@@ -107,6 +148,8 @@ export function App() {
         event.ctrlKey ||
         event.altKey ||
         dialog ||
+        promptOpen ||
+        (feedbackOpen && !wide) ||
         navOpen ||
         target?.closest("input, textarea, select, [contenteditable]")
       )
@@ -148,12 +191,25 @@ export function App() {
       visible={!mobile || navOpen}
     />
   );
+  const feedbackPanel = workspace && feedbackOpen && (
+    <FeedbackPanel
+      review={review}
+      tab={feedbackTab}
+      setTab={setFeedbackTab}
+      close={() => setFeedbackOpen(false)}
+      addComment={addComment}
+      focusId={commentFocusId}
+      buildPrompt={buildPrompt}
+    />
+  );
   return (
     <>
       <a className="skip-link" href="#review-content">
         Skip to changes
       </a>
-      <div className={`app-shell ${workspace ? "" : "onboarding-mode"}`}>
+      <div
+        className={`app-shell ${workspace ? "" : "onboarding-mode"} ${feedbackOpen && wide ? "has-feedback" : ""}`}
+      >
         {!mobile && sidebar}
         <main className="workspace">
           <header className="toolbar">
@@ -166,7 +222,10 @@ export function App() {
                 aria-controls="navigation-dialog"
                 aria-expanded={navOpen}
                 hidden={!workspace}
-                onClick={() => setNavOpen(true)}
+                onClick={() => {
+                  setFeedbackOpen(false);
+                  setNavOpen(true);
+                }}
               >
                 <Icon name="menu" />
               </Button>
@@ -184,9 +243,40 @@ export function App() {
               {workspace && (
                 <>
                   <Button
+                    variant="secondary"
+                    className="feedback-toggle"
+                    aria-label={`Feedback: ${review.feedback.count} ${review.feedback.count === 1 ? "comment" : "comments"}`}
+                    aria-expanded={feedbackOpen}
+                    aria-controls={wide ? "feedback-rail" : "feedback-dialog"}
+                    onClick={() => {
+                      setDialog(null);
+                      setNavOpen(false);
+                      setFeedbackOpen((value) => !value);
+                    }}
+                  >
+                    <Icon name="note" />
+                    <span>Feedback</span>
+                    <span className="feedback-count">
+                      {review.feedback.count}
+                    </span>
+                  </Button>
+                  <Button className="build-prompt-button" onClick={buildPrompt}>
+                    Build prompt
+                    <Icon name="arrow" />
+                  </Button>
+                  <Button
                     variant="unstyled"
                     className="mcp-button"
-
+                    aria-label={
+                      workspace.planStatus === "current"
+                        ? "Review path ready"
+                        : "Connect agent"
+                    }
+                    title={
+                      workspace.planStatus === "current"
+                        ? "Review path ready"
+                        : "Connect agent"
+                    }
                     onClick={() => openDialog("mcp")}
                   >
                     <span>
@@ -242,6 +332,8 @@ export function App() {
                   toggleContext={toggleContext}
                   openRepository={() => openDialog("repository")}
                   restart={restart}
+                  addComment={addComment}
+                  buildPrompt={buildPrompt}
                 />
               ) : (
                 <Onboarding review={review} />
@@ -256,7 +348,35 @@ export function App() {
             />
           </div>
         </main>
+        {wide && feedbackOpen && (
+          <aside
+            className="feedback-rail"
+            id="feedback-rail"
+            aria-label="Review feedback"
+          >
+            {feedbackPanel}
+          </aside>
+        )}
       </div>
+      {!wide && (
+        <NativeDialog
+          open={feedbackOpen}
+          onClose={() => setFeedbackOpen(false)}
+          label="Review feedback"
+          className="feedback-drawer"
+          id="feedback-dialog"
+        >
+          {feedbackPanel}
+        </NativeDialog>
+      )}
+      {workspace && (
+        <PromptBuilder
+          key={review.feedback.key}
+          review={review}
+          open={promptOpen}
+          close={() => setPromptOpen(false)}
+        />
+      )}
       <NativeDialog
         id="navigation-dialog"
         className="navigation-dialog"
@@ -272,6 +392,7 @@ export function App() {
         review={review}
         openRepository={() => openDialog("repository")}
         navigate={navigate}
+        buildPrompt={buildPrompt}
       />
       <div
         className={`toast ${review.toast || review.canUndo ? "visible" : ""}`}

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as demo from "../sample-data";
 import { createReviewModel } from "../review";
+import { useFeedback } from "./use-feedback";
 import type {
   McpConfig,
   ReviewAction,
@@ -102,6 +103,7 @@ export function useReview() {
     () => createReviewModel(session.workspace || empty),
     [session.workspace],
   );
+  const feedback = useFeedback(session.workspace, session.review);
   const announce = useCallback((message: string) => {
     clearTimeout(toastTimer.current);
     setToast(message);
@@ -468,6 +470,7 @@ export function useReview() {
     ...session,
     state: session.review,
     model,
+    feedback,
     theme,
     toggleTheme: () =>
       setTheme((value) => (value === "light" ? "dark" : "light")),

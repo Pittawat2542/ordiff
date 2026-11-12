@@ -57,6 +57,14 @@ export function Sidebar({
         section={section}
         selected={section.id === state.activeId}
         reviewed={state.reviewed.includes(section.id)}
+        commentCount={
+          review.feedback.state.comments.filter(
+            (comment) =>
+              comment.text.trim() &&
+              comment.path === section.path &&
+              (!comment.section || comment.section.id === section.id),
+          ).length
+        }
         onSelect={() => navigate({ type: "section", id: section.id })}
       />
     );
@@ -296,11 +304,13 @@ function SectionLink({
   selected,
   reviewed,
   onSelect,
+  commentCount,
 }: {
   section: ReviewSection;
   selected: boolean;
   reviewed: boolean;
   onSelect: () => void;
+  commentCount: number;
 }) {
   const split = section.path.lastIndexOf("/");
   const symbol = section.symbol || section.title || "Changed section";
@@ -341,6 +351,15 @@ function SectionLink({
         <span className="section-meta" id={`section-meta-${section.id}`}>
           <span>{split < 0 ? section.role : section.path.slice(0, split)}</span>
           <span>{range}</span>
+          {commentCount > 0 && (
+            <span
+              className="section-feedback-count"
+              aria-label={`${commentCount} ${commentCount === 1 ? "comment" : "comments"}`}
+            >
+              <Icon name="note" />
+              {commentCount}
+            </span>
+          )}
           <span className="sr-only">
             {reviewed ? "Reviewed" : "Needs review"}
           </span>

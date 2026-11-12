@@ -152,7 +152,7 @@ export function Onboarding({ review }: { review: ReviewController }) {
       <p className="welcome-description">
         A calmer review starts with your repository.
         <br />
-        Connect your agent to follow one behavior across files.
+        Follow the changes. Give your agent a clear next step.
       </p>
       <RepositoryForm review={review} />
       <div className="welcome-secondary">
@@ -166,10 +166,10 @@ export function Onboarding({ review }: { review: ReviewController }) {
           <i>1</i>Open your repo
         </span>
         <span>
-          <i>2</i>Connect your agent
+          <i>2</i>Review & comment
         </span>
         <span>
-          <i>3</i>Review by behavior
+          <i>3</i>Build your prompt
         </span>
       </div>
     </section>
@@ -188,12 +188,14 @@ export function AppDialog({
   review,
   openRepository,
   navigate,
+  buildPrompt,
 }: {
   kind: DialogKind | null;
   close: () => void;
   review: ReviewController;
   openRepository: () => void;
   navigate: (action: ReviewAction) => void;
+  buildPrompt: () => void;
 }) {
   const icon =
     kind === "repository"
@@ -256,15 +258,21 @@ export function AppDialog({
             <McpSetup review={review} openRepository={openRepository} />
           )}
           {kind === "summary" && (
-            <ReviewSummary review={review} close={close} navigate={navigate} />
+            <ReviewSummary
+              review={review}
+              close={close}
+              navigate={navigate}
+              buildPrompt={buildPrompt}
+            />
           )}
           {kind === "help" && (
             <>
               <h2 id="help-title">A clearer review.</h2>
               <p className="dialog-intro">
-                Open a local repository, then connect your agent through MCP to
-                get a reading path. All changes stay accessible, with or without
-                a path.
+                Open a local repository, review the changes, and add file or
+                section comments. Build a prompt from selected feedback and
+                general instructions. Connect an agent through MCP whenever you
+                want a guided reading path.
               </p>
               <div className="shortcut-list">
                 <div>
@@ -291,7 +299,7 @@ export function AppDialog({
                 <strong>Your repository stays yours.</strong>
                 <p>
                   Git access is read-only. Use Refresh to pick up file edits.
-                  Review progress and notes stay in this browser; your repo
+                  Review progress and feedback stay in this browser; your repo
                   choice and agent plan stay locally in Ordiff.
                 </p>
               </div>
@@ -379,10 +387,12 @@ function ReviewSummary({
   review,
   close,
   navigate,
+  buildPrompt,
 }: {
   review: ReviewController;
   close: () => void;
   navigate: (action: ReviewAction) => void;
+  buildPrompt: () => void;
 }) {
   const progress = review.model.getProgress(review.state);
   const unassigned = review.model.sections.filter(
@@ -423,6 +433,13 @@ function ReviewSummary({
         })}
       </div>
       <Button
+        className="wide-button summary-build-prompt"
+        onClick={buildPrompt}
+      >
+        Build prompt <Icon name="arrow" />
+      </Button>
+      <Button
+        variant="secondary"
         className="wide-button"
         onClick={() => {
           close();
