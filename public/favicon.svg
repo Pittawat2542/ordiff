@@ -1,1 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="12" fill="#222"/><g fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"><path d="M23 17v30M43 17v8c0 12-20 5-20 19"/><circle cx="23" cy="17" r="4" fill="#fff"/><circle cx="43" cy="17" r="4" fill="#fff"/><circle cx="23" cy="47" r="4" fill="#fff"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs><linearGradient id="surface" x1="0" y1="0" x2="0" y2="64" gradientUnits="userSpaceOnUse"><stop offset="0%" style="stop-color:#303030"/><stop offset="100%" style="stop-color:#181818"/></linearGradient></defs>
+  <rect width="64" height="64" rx="17" fill="url(#surface)"/>
+  <rect x="0.5" y="0.5" width="63" height="63" rx="16.5" fill="none" stroke="#fff" stroke-opacity="0.12"/>
+  <g transform="translate(8 8) scale(1.2)"><g fill="none" stroke="#f8f8f8" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M16 6C10.477 6 6 10.477 6 16v8c0 5.523 4.477 10 10 10v-8"/><path d="M24 34c5.523 0 10-4.477 10-10v-8c0-5.523-4.477-10-10-10v8"/></g></g>
+</svg>
