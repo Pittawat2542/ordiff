@@ -3,6 +3,7 @@ import {
   Suspense,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
 } from "react";
@@ -76,7 +77,7 @@ function ReviewWorkspace() {
     media.addEventListener("change", sync);
     return () => media.removeEventListener("change", sync);
   }, []);
-  useEffect(() => {
+  useLayoutEffect(() => {
     setFeedbackOpen(false);
     setPromptOpen(false);
     setCommentFocusId(null);
