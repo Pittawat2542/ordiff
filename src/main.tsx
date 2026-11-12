@@ -1,6 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
+import { installVisibilityHandling } from "./lib/visibility";
 import "@fontsource/ibm-plex-sans/latin-400.css";
 import "@fontsource/ibm-plex-sans/latin-500.css";
 import "@fontsource/ibm-plex-sans/latin-600.css";
@@ -9,6 +10,9 @@ import "@fontsource/ibm-plex-mono/latin-500.css";
 import "./style.css";
 import "./feedback.css";
 import "./motion.css";
+
+const stopVisibilityHandling = installVisibilityHandling();
+if (import.meta.hot) import.meta.hot.dispose(stopVisibilityHandling);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>

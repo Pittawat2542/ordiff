@@ -21,8 +21,18 @@ export function createApi({ store = new WorkspaceStore(), defaultPath = process.
     try { url = new URL(request.url, `http://${request.headers.host}`); } catch { return reply(response, 400, { error: 'Invalid request host.' }); }
     if (!['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)) return reply(response, 403, { error: 'Local requests only.' });
     if (request.headers.origin && request.headers.origin !== url.origin) return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
+    if (request.headers['sec-fetch-site'] === 'cross-site') return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
     try {
       await ready;
+      if (request.method === 'GET' && url.pathname === '/api/events') {
+        if (response.destroyed) return;
+        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' });
+        const notify = revision => response.write(`data: ${JSON.stringify({ revision })}\n\n`);
+        store.on('revision', notify);
+        response.on('close', () => store.off('revision', notify));
+        notify(store.revision);
+        return;
+      }
       if (request.method === 'GET' && url.pathname === '/api/file') {
         if (request.headers['sec-fetch-site'] === 'cross-site') return reply(response, 403, { error: 'Cross-origin access is not allowed.' });
         const resource = url.searchParams.get('resource');

@@ -43,6 +43,28 @@ test('cross-origin requests cannot select a directory or read a connected reposi
   assert.equal((await fetch(url + '/api/workspace', { headers: { Origin: 'https://unrelated.example' } })).status, 403);
 });
 
+test('workspace events report revisions without rescanning Git and reject cross-site readers', async t => {
+  const { path, url, post } = await setup(t);
+  const abort = new AbortController();
+  t.after(() => abort.abort());
+  const response = await fetch(url + '/api/events', { signal: abort.signal });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type'), /text\/event-stream/);
+  const reader = response.body.getReader();
+  const read = async () => new TextDecoder().decode((await reader.read()).value);
+  assert.match(await read(), /data: \{"revision":0\}/);
+  await post('/api/repository', { path });
+  assert.match(await read(), /data: \{"revision":1\}/);
+  // A notification subscription must not make subsequent filesystem edits visible.
+  await writeFile(join(path, 'extra.ts'), 'export const extra = true;\n');
+  const snapshot = await (await fetch(url + '/api/workspace')).json();
+  assert.equal(snapshot.revision, 1);
+  assert.equal(snapshot.workspace.sections.length, 1);
+  await post('/api/refresh');
+  assert.match(await read(), /data: \{"revision":2\}/);
+  assert.equal((await fetch(url + '/api/events', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
+});
+
 test('a real MCP stdio client can discover tools, read Git hunks, and send a plan to the same app', async t => {
   const { path, store, url, post } = await setup(t);
   await post('/api/repository', { path });

@@ -9,6 +9,7 @@ import {
 import { beforeEach, expect, test, vi } from "vitest";
 import { App } from "../../src/App";
 import type { Workspace } from "../../src/types";
+import { emitRevision } from "./setup";
 
 const repo: Workspace = {
   version: "git-v1",
@@ -528,7 +529,7 @@ test("refreshing a changed diff resets old decisions and exposes a stale agent p
   ).toBeInTheDocument();
 });
 
-test("polling accepts a new agent path for the same diff without losing progress", async () => {
+test("a revision notification accepts a new agent path without losing progress", async () => {
   vi.useFakeTimers();
   let proposed = false;
   vi.stubGlobal(
@@ -564,7 +565,8 @@ test("polling accepts a new agent path for the same diff without losing progress
     );
     proposed = true;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      emitRevision(2);
+      await vi.advanceTimersByTimeAsync(0);
     });
     expect(
       screen.getByRole("heading", { name: "Expose failure" }),
@@ -1007,7 +1009,8 @@ test("undo still reveals its section after an agent replaces the behavior groups
     );
     proposed = true;
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(2000);
+      emitRevision(2);
+      await vi.advanceTimersByTimeAsync(0);
     });
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
     expect(

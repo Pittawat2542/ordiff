@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import * as demo from "../sample-data";
 import { createReviewModel } from "../review";
 import { useFeedback } from "./use-feedback";
+import { isPageHidden } from "../lib/visibility";
 import type {
   McpConfig,
   ReviewAction,
@@ -50,7 +51,7 @@ async function api(
   );
   if (!response.headers.get("content-type")?.includes("application/json"))
     throw new Error(
-      "The local service is unavailable. Run Ordiff with npm run dev and try again.",
+      "The local service is unavailable. Reopen Ordiff (or run npm run dev) and try again.",
     );
   const data = await response.json();
   if (!response.ok)
@@ -95,6 +96,7 @@ export function useReview() {
   const busyRef = useRef(false);
   const revision = useRef(-1);
   const generation = useRef(0);
+  const syncConnection = useRef<() => void>(() => {});
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
     undefined,
@@ -174,20 +176,25 @@ export function useReview() {
     }
   }, [session, theme]);
   useEffect(() => {
-    let active = true,
-      pending = false;
-    const abort = new AbortController();
-    async function load(poll = false) {
-      if (pending || busyRef.current) return;
+    let active = true, pending = false, dirty = false;
+    let stream: EventSource | undefined;
+    let abort = new AbortController();
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    let delay = 1000;
+    async function load(incremental = false) {
+      if (!active || isPageHidden() || current.current.mode === "demo") return;
+      if (pending) { dirty = true; return; }
+      if (busyRef.current) return;
       pending = true;
       const started = generation.current;
+      const signal = abort.signal;
       try {
         const data = await api(
-          `workspace${poll ? `?since=${revision.current}` : ""}`,
+          `workspace${incremental ? `?since=${revision.current}` : ""}`,
           undefined,
-          abort.signal,
+          signal,
         );
-        if (!active) return;
+        if (!active || signal.aborted) return;
         // Connection metadata remains useful even if a newer repository request superseded this snapshot.
         if (data.defaultPath) setDefaultPath(data.defaultPath);
         if (data.mcpConfig) setMcpConfig(data.mcpConfig);
@@ -195,7 +202,7 @@ export function useReview() {
         setServiceError("");
         if (data.unchanged) return;
         revision.current = data.revision;
-        if (current.current.mode !== "demo" || data.workspace) {
+        {
           const previous = current.current.workspace;
           if (
             previous &&
@@ -209,22 +216,62 @@ export function useReview() {
           applyWorkspace(data.workspace);
         }
       } catch (error) {
-        if (active && started === generation.current && !poll)
+        if (active && !signal.aborted && started === generation.current && !incremental)
           setServiceError(messageOf(error));
       } finally {
         pending = false;
+        if (dirty && active && !isPageHidden()) { dirty = false; void load(true); }
       }
     }
-    void load();
-    const interval = setInterval(() => {
-      if (!document.hidden && current.current.mode !== "demo") void load(true);
-    }, 2000);
+    function connect() {
+      if (!active || isPageHidden() || stream || busyRef.current || current.current.mode === "demo") return;
+      stream = new EventSource('/api/events');
+      stream.onmessage = event => {
+        delay = 1000;
+        try {
+          const next = JSON.parse(event.data);
+          if (Number.isInteger(next.revision) && next.revision !== revision.current) void load(true);
+        } catch { /* A reconnect always resynchronizes the workspace. */ }
+      };
+      stream.onerror = () => {
+        stream?.close();
+        stream = undefined;
+        if (active && !isPageHidden()) {
+          retry = setTimeout(() => { connect(); void load(); }, delay);
+          delay = Math.min(delay * 2, 60000);
+        }
+      };
+    }
+    function synchronize(resync = false) {
+      clearTimeout(retry);
+      if (isPageHidden() || busyRef.current || current.current.mode === "demo") {
+        stream?.close();
+        stream = undefined;
+        if (isPageHidden() || current.current.mode === "demo") {
+          abort.abort();
+          abort = new AbortController();
+        }
+      } else {
+        connect();
+        if (resync) void load();
+      }
+    }
+    const visibilityChanged = () => synchronize(true);
+    syncConnection.current = () => synchronize();
+    visibilityChanged();
+    document.addEventListener('visibilitychange', visibilityChanged);
+    window.addEventListener('ordiff:visibility', visibilityChanged);
     return () => {
       active = false;
       abort.abort();
-      clearInterval(interval);
+      stream?.close();
+      clearTimeout(retry);
+      document.removeEventListener('visibilitychange', visibilityChanged);
+      window.removeEventListener('ordiff:visibility', visibilityChanged);
+      syncConnection.current = () => {};
     };
   }, [announce, applyWorkspace]);
+  useEffect(() => { syncConnection.current(); }, [session.mode, busy]);
   function dispatch(action: ReviewAction) {
     setSession((previous) => {
       const nextModel = createReviewModel(previous.workspace || empty);

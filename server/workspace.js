@@ -1,13 +1,14 @@
 import { readFile, mkdir, writeFile, rename } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { readRepository } from './git.js';
+import { EventEmitter } from 'node:events';
 
-export class WorkspaceStore {
+export class WorkspaceStore extends EventEmitter {
   #current = null;
   #plan = null;
   #queue = Promise.resolve();
   revision = 0;
-  constructor({ stateFile = null } = {}) { this.stateFile = stateFile; }
+  constructor({ stateFile = null } = {}) { super(); this.stateFile = stateFile; }
   snapshot() { return this.#current; }
   run(operation) { const pending = this.#queue.then(operation); this.#queue = pending.catch(() => {}); return pending; }
   async restore() {
@@ -16,11 +17,13 @@ export class WorkspaceStore {
     catch { /* Missing or obsolete state returns to onboarding. */ }
   }
   async persist() {
-    if (!this.stateFile) return;
-    await mkdir(dirname(this.stateFile), { recursive: true });
-    const temporary = `${this.stateFile}.tmp`;
-    await writeFile(temporary, JSON.stringify({ path: this.#current?.repo.path || null, plan: this.#plan }), { mode: 0o600 });
-    await rename(temporary, this.stateFile);
+    if (this.stateFile) {
+      await mkdir(dirname(this.stateFile), { recursive: true });
+      const temporary = `${this.stateFile}.tmp`;
+      await writeFile(temporary, JSON.stringify({ path: this.#current?.repo.path || null, plan: this.#plan }), { mode: 0o600 });
+      await rename(temporary, this.stateFile);
+    }
+    this.emit('revision', this.revision);
   }
   connect(path) {
     return this.run(async () => {
