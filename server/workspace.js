@@ -25,7 +25,13 @@ export class WorkspaceStore extends EventEmitter {
       }).slice(0, 10).map(({ name, path }) => ({ name, path }));
       if (!saved.path) return;
       await this.connect(saved.path, { recordRecent: !Array.isArray(saved.recentRepositories) });
-      if (saved.plan?.version === this.#current.version) await this.submitPlan(saved.plan);
+      if (saved.plan?.version === this.#current.version) {
+        // connect() just read Git. Restore against that snapshot without scanning it again.
+        await this.run(async () => {
+          this.#applyPlan(this.#current, saved.plan);
+          await this.persist();
+        });
+      }
     }
     catch { /* Missing or obsolete state returns to onboarding. */ }
   }
@@ -80,28 +86,32 @@ export class WorkspaceStore extends EventEmitter {
   submitPlan(plan) {
     return this.run(async () => {
       const snapshot = await this.updateFromGit();
-      if (plan.version !== snapshot.version) throw new Error('The diff changed. Read the current context and submit a plan for the new version.');
-      if (!Array.isArray(plan.groups) || !plan.groups.length || plan.groups.length > 100) throw new Error('A review plan needs between 1 and 100 behavior groups.');
-      const validIds = new Set(snapshot.sections.map(section => section.id));
-      const groupIds = new Set();
-      const groups = plan.groups.map(group => {
-        if (typeof group.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(group.id) || groupIds.has(group.id)) throw new Error('Behavior identifiers must be unique simple names.');
-        if (typeof group.title !== 'string' || !group.title.trim() || group.title.length > 160 || typeof group.description !== 'string' || group.description.length > 1000) throw new Error('Each behavior needs a short title and description.');
-        if (!Array.isArray(group.steps) || !group.steps.length || group.steps.length > 500) throw new Error('Each behavior needs at least one step.');
-        groupIds.add(group.id);
-        const seen = new Set();
-        const explanations = {};
-        for (const step of group.steps) {
-          if (!validIds.has(step.sectionId)) throw new Error(`Unknown diff section: ${step.sectionId}`);
-          if (seen.has(step.sectionId)) throw new Error('A behavior cannot repeat the same section.');
-          if (typeof step.explanation !== 'string' || step.explanation.length > 2000) throw new Error('Step explanations must be short text.');
-          seen.add(step.sectionId); explanations[step.sectionId] = step.explanation;
-        }
-        return { id: group.id, title: group.title, short: group.title, description: group.description, sections: [...seen], explanations };
-      });
-      this.#plan = plan;
-      this.#current = { ...snapshot, groups, planStatus: 'current', sections: snapshot.sections.map(section => ({ ...section, group: groups.find(group => group.sections.includes(section.id))?.id || null })) };
-      this.revision++; await this.persist(); return this.#current;
+      this.#applyPlan(snapshot, plan);
+      await this.persist(); return this.#current;
     });
+  }
+  #applyPlan(snapshot, plan) {
+    if (plan.version !== snapshot.version) throw new Error('The diff changed. Read the current context and submit a plan for the new version.');
+    if (!Array.isArray(plan.groups) || !plan.groups.length || plan.groups.length > 100) throw new Error('A review plan needs between 1 and 100 behavior groups.');
+    const validIds = new Set(snapshot.sections.map(section => section.id));
+    const groupIds = new Set();
+    const groups = plan.groups.map(group => {
+      if (typeof group.id !== 'string' || !/^[a-zA-Z0-9_-]{1,80}$/.test(group.id) || groupIds.has(group.id)) throw new Error('Behavior identifiers must be unique simple names.');
+      if (typeof group.title !== 'string' || !group.title.trim() || group.title.length > 160 || typeof group.description !== 'string' || group.description.length > 1000) throw new Error('Each behavior needs a short title and description.');
+      if (!Array.isArray(group.steps) || !group.steps.length || group.steps.length > 500) throw new Error('Each behavior needs at least one step.');
+      groupIds.add(group.id);
+      const seen = new Set();
+      const explanations = {};
+      for (const step of group.steps) {
+        if (!validIds.has(step.sectionId)) throw new Error(`Unknown diff section: ${step.sectionId}`);
+        if (seen.has(step.sectionId)) throw new Error('A behavior cannot repeat the same section.');
+        if (typeof step.explanation !== 'string' || step.explanation.length > 2000) throw new Error('Step explanations must be short text.');
+        seen.add(step.sectionId); explanations[step.sectionId] = step.explanation;
+      }
+      return { id: group.id, title: group.title, short: group.title, description: group.description, sections: [...seen], explanations };
+    });
+    this.#plan = plan;
+    this.#current = { ...snapshot, groups, planStatus: 'current', sections: snapshot.sections.map(section => ({ ...section, group: groups.find(group => group.sections.includes(section.id))?.id || null })) };
+    this.revision++;
   }
 }

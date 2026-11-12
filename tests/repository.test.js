@@ -136,8 +136,18 @@ test('repository selection and a valid plan survive a restart and reopening the 
   const snapshot = first.snapshot();
   await first.submitPlan({ version: snapshot.version, groups: [{ id: 'failure', title: 'Failure state', description: '', steps: [{ sectionId: snapshot.sections[0].id, explanation: 'Follow the state.' }] }] });
   const restored = new WorkspaceStore({ stateFile });
-  await restored.restore();
+  const traceFile = join(path, '.ordiff/startup-git.trace');
+  const previousTrace = process.env.GIT_TRACE;
+  process.env.GIT_TRACE = traceFile;
+  try { await restored.restore(); }
+  finally {
+    if (previousTrace === undefined) delete process.env.GIT_TRACE;
+    else process.env.GIT_TRACE = previousTrace;
+  }
   assert.equal(restored.snapshot().groups[0].title, 'Failure state');
+  assert.equal(restored.snapshot().version, snapshot.version);
+  const scans = (await readFile(traceFile, 'utf8')).match(/rev-parse --show-toplevel/g) || [];
+  assert.equal(scans.length, 1, 'Restoring a saved plan must reuse the fresh startup Git snapshot.');
   await restored.connect(path);
   assert.equal(restored.snapshot().groups[0]?.title, 'Failure state');
 });
@@ -152,6 +162,33 @@ test('recent repositories deduplicate repository roots and exclude failed connec
   await assert.rejects(store.connect(join(first, 'missing')));
   assert.deepEqual(store.recentRepositories.map(repo => repo.path), [first, second]);
   assert.equal(store.snapshot().repo.path, first);
+});
+
+test('restoring ignores stale and invalid saved plans while keeping the current repository', async t => {
+  const path = await fixture(t);
+  await writeFile(join(path, 'pipeline/run.ts'), 'export const status = "failed";\n');
+  const stateFile = join(path, '.ordiff/workspace.json');
+  const store = new WorkspaceStore({ stateFile });
+  await store.connect(path);
+  const snapshot = store.snapshot();
+  const plan = { version: snapshot.version, groups: [{ id: 'failure', title: 'Failure state', description: '', steps: [{ sectionId: snapshot.sections[0].id, explanation: '' }] }] };
+  await store.submitPlan(plan);
+  const saved = JSON.parse(await readFile(stateFile, 'utf8'));
+  await writeFile(stateFile, JSON.stringify({ ...saved, plan: { ...plan, groups: [{ ...plan.groups[0], steps: [{ sectionId: 'missing', explanation: '' }] }] } }));
+  const invalid = new WorkspaceStore({ stateFile });
+  await invalid.restore();
+  assert.equal(invalid.snapshot().repo.path, path);
+  assert.equal(invalid.snapshot().planStatus, 'none');
+  assert.deepEqual(invalid.snapshot().groups, []);
+
+  await writeFile(stateFile, JSON.stringify(saved));
+  await writeFile(join(path, 'pipeline/run.ts'), 'export const status = "completed";\n');
+  const stale = new WorkspaceStore({ stateFile });
+  await stale.restore();
+  assert.notEqual(stale.snapshot().version, snapshot.version);
+  assert.equal(stale.snapshot().planStatus, 'none');
+  assert.deepEqual(stale.snapshot().groups, []);
+  assert.ok(stale.snapshot().sections[0].lines.some(line => line.type === 'add' && line.text.includes('completed')));
 });
 
 test('recent history keeps ten entries and survives disconnect and restart', async t => {
