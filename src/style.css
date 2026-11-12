@@ -350,6 +350,8 @@
       var(--shadow-chrome);
   }
   .workspace {
+    /* Keep sticky headers and toolbar layers below the adjacent feedback rail. */
+    isolation: isolate;
     margin-inline-start: var(--chrome-inset);
     display: grid;
     grid-template-rows: 56px minmax(0, 1fr) auto;
