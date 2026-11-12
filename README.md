@@ -23,13 +23,23 @@ Ordiff reads the combined changes against HEAD: staged, unstaged, and non-ignore
 
 1. Browse **All changes**, or connect an agent to create **Behaviors** with ordered sections. A behavior can span pipeline code, its UI consumer, tests, and documentation. Different hunks in one file remain independently reviewable.
 2. Use the navigation panel to select a section. Global search finds filenames and code across the whole diff; the status filter works in both browsing and search. **Ungrouped changes** keeps sections outside the agent's plan visible.
-3. Read the unified diff with language-aware syntax highlighting. **Context** opens the behavior description and the agent's explanation; it closes when you change sections. Notes and checklists live below the diff.
+3. Read the unified diff with language-aware syntax highlighting. **Context** opens the behavior description and the agent's explanation; it closes when you change sections. Use **Add comment** for a whole file or **Comment on section** for a specific hunk. Checklists and quick notes remain below the diff; quick notes join your feedback automatically.
 4. Select **Mark reviewed & next** to record progress and find the next unreviewed section, including ungrouped changes. A reviewed section shows **Continue**; **Mark unreviewed** is a separate action.
-5. When every section is reviewed, the completion screen offers reviewed changes, a refresh, or a new pass through the same diff. A clean repository has its own empty state.
+5. Use **Build prompt** to turn your feedback into your agent's next task, during or after review. When every section is reviewed, the completion screen also offers reviewed changes, a refresh, or a new pass through the same diff. A clean repository has its own empty state and still supports general instructions.
 
 **Undo** restores the latest mark and its previous location for six seconds. Another mark, a repository change, or a diff-version change expires it. Notes and checklist decisions are preserved by Undo.
 
 Use **J / K** for next / previous section, **R** to mark reviewed or continue, **⌘ K / Ctrl K** to search, and **?** for help. Light and dark appearances use the same monochrome surfaces and locally bundled IBM Plex fonts. Navigation moves into a drawer below 1024px.
+
+## Turn feedback into prompts
+
+The **Feedback** panel holds multiple file and section comments, with **Change**, **Keep**, and **Note** labels to distinguish requests, things to preserve, and context. Text autosaves as you type. The panel sits beside the diff on wide screens and opens in a drawer below 1280px. **General instructions** holds direction for the whole task.
+
+Choose **Build prompt** to select the files for one batch. Only files with nonempty comments appear, and each selected file includes all its comments. General instructions have their own inclusion checkbox: export file feedback, general instructions, or both. The preview updates immediately and preserves your wording and captured section references.
+
+**Copy prompt** leaves the builder open so you can select another batch. **Download Markdown** saves the same selected prompt. If clipboard access fails, use **Select prompt text** to copy manually. No AI service or agent connection is needed to generate a prompt; direct sending to a Codex chat is not included.
+
+Feedback survives diff refreshes, repository switches, and review-progress resets. When a referenced section changes or disappears, its comment is flagged for rechecking and retains its original reference. Explicitly reassign it to the current section or turn it into a file comment. Feedback on files no longer in the diff remains editable and exportable in the builder, with a warning in the exported prompt.
 
 ## Preview files
 
@@ -60,9 +70,9 @@ See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and th
 
 ## Local state
 
-Repository selection and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json`. Review progress, notes, checklists, and appearance are saved in this browser. **Close repository** returns to onboarding and clears the server's active repository and plan. A failed connection preserves the current workspace.
+Repository selection and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json`. Review progress, feedback, checklists, and appearance are saved in this browser. **Close repository** returns to onboarding and clears the server's active repository and plan; saved feedback remains available when you reopen that repository. A failed connection preserves the current workspace.
 
-Review progress belongs to an exact repository and diff version. Refreshing changed contents starts a new review; refreshing an unchanged diff preserves progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
+Review progress belongs to an exact repository and diff version. Refreshing changed contents starts fresh review progress while keeping feedback; refreshing an unchanged diff preserves progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
 
 ## Development and checks
 

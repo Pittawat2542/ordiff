@@ -9,13 +9,15 @@ Ordiff uses React, TypeScript, Vite, Tailwind CSS, and locally owned shadcn/ui c
 | `src/App.tsx`                              | Workspace composition, dialogs, keyboard shortcuts, and drawer focus                                    |
 | `src/hooks/use-review.ts`                  | Workspace requests, plan polling, browser persistence, explicit review decisions, advancement, and Undo |
 | `src/review.ts`                            | Dataset-independent review state, navigation, search, filtering, and progress                           |
+| `src/feedback.ts`, `src/prompt.ts`          | Feedback state, captured references, legacy-note import, and deterministic selected-prompt generation  |
+| `src/hooks/use-feedback.ts`                | Repository-scoped browser feedback persistence, independent of diff-versioned review progress          |
 | `src/sample-data.ts`                       | The built-in example review; separate from repository parsing and the review model                      |
 | `src/types.ts`                             | Frontend data contracts                                                                                 |
 | `src/diff-view.tsx`                        | Unified diff, preview tabs, and original/working comparison panes                                       |
 | `src/lib/diff.ts`, `src/lib/highlight.ts`  | Change counts and language-aware highlighting                                                           |
 | `src/components/`                          | Navigation, review content, footer, dialogs, and file viewers                                           |
 | `src/components/ui/`                       | Shared button, input, and textarea controls                                                             |
-| `src/style.css`, `src/preview.css`         | App themes, layout, accessibility, and preview styles                                                   |
+| `src/style.css`, `src/preview.css`, `src/feedback.css` | App themes, layout, accessibility, previews, feedback panels, and prompt builder                              |
 | `server/git.js`                            | Read-only Git snapshots and independently identified hunks                                              |
 | `server/files.js`, `server/word-worker.js` | Snapshot-authorized file access, Markdown images, and DOC text extraction                               |
 | `server/workspace.js`                      | Serialized repository and plan operations, validation, and disk persistence                             |
@@ -39,6 +41,10 @@ The workspace API serves the selected repository and a revision counter. The bro
 File requests identify an authorized `sectionId`, exact `version`, and `side` (`before` or `after`). DOC text uses `format=text`; Markdown images use `resource` and must be referenced by that document. Original bytes come from the snapshot's Git blobs; working bytes must match the snapshot's hashes. Requests reject stale versions, changed bytes, symlink targets, paths outside the repository, and cross-origin access. File responses use attachment, no-store, and sandbox headers.
 
 The browser save keys are `ordiff.appearance` and `ordiff.review.v2.<repository-path>` (or `demo` for the sample). Saved notes are bounded to 2,000 characters. Keep these storage keys and the saved review shape stable when refactoring. Undo is session-only, lasts six seconds, and resets on a new mark or workspace/version change.
+
+Feedback has its own `ordiff.feedback.v1.<repository-path>` key (`ordiff.feedback.v1.demo` for the sample), containing `comments` and `general`. Comments have stable IDs, an intent, verbatim text, a file path, and an optional captured section ID, diff version, hunk heading, and original/working line ranges. Matching legacy notes import as Note comments only when no feedback record exists; an empty saved feedback record prevents deleted notes from reappearing. The legacy review format remains readable and writable.
+
+Feedback persists independently of diff versions and progress resets. Reference status is derived from the current snapshot without changing the saved anchor. Missing sections and missing files stay exportable; reassignment is explicit. Prompt generation is a pure formatter that selects only commented files and optional general instructions. Copy and Markdown download share its output. No feedback HTTP endpoints, MCP tools, or model calls are added.
 
 Git snapshots allow at most 500 changed files. Text diffs for new files larger than 2 MiB are omitted; supported formats can still use full-file previews up to 25 MiB per revision. Other viewer limits are documented in [the README](../README.md#preview-files). The MCP tools retain their own request and result limits in [the MCP guide](mcp.md#tools).
 
