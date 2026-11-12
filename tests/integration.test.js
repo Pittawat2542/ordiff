@@ -127,12 +127,33 @@ test('a real MCP stdio client can discover tools, read Git hunks, and send a pla
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const tools = await rpc('tools/list');
   assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['get_review_context', 'submit_review_plan']);
+  const metadata = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: {} })).content[0].text);
+  assert.equal(metadata.repo, store.snapshot().repo.path);
+  assert.equal(metadata.groups, undefined);
+  assert.equal(metadata.planStatus, undefined);
+  assert.equal(metadata.sections[0].lines, undefined);
+  assert.equal(metadata.sections[0].role, undefined);
   const contextResult = await rpc('tools/call', { name: 'get_review_context', arguments: { includeDiff: true } });
   assert.equal(contextResult.isError, undefined);
   const context = JSON.parse(contextResult.content[0].text);
   assert.ok(context.sections[0].lines.some(line => line.text.includes('failed')));
-  const submitted = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ id: 'failure', title: 'Expose failure', description: 'Follow the contract.', steps: [{ sectionId: context.sections[0].id, explanation: 'Start at the new run state.' }] }] } });
+  const submitted = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ title: 'Expose failure', sections: [context.sections[0].id] }] } });
   assert.equal(submitted.isError, undefined);
   assert.equal(store.snapshot().groups[0].title, 'Expose failure');
   assert.equal(store.snapshot().groups[0].sections[0], context.sections[0].id);
+  assert.equal(store.snapshot().groups[0].description, '');
+  const detailed = await rpc('tools/call', { name: 'submit_review_plan', arguments: {
+    version: context.version,
+    groups: [{ title: 'Expose failure', description: 'Follow the contract.', sections: [context.sections[0].id], explanations: { [context.sections[0].id]: 'Start here.' } }],
+  } });
+  assert.equal(detailed.isError, undefined);
+  assert.equal(store.snapshot().groups[0].explanations[context.sections[0].id], 'Start here.');
+  const withPlan = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: { includePlan: true } })).content[0].text);
+  assert.equal(withPlan.groups[0].title, 'Expose failure');
+  for (const sections of [['missing'], [context.sections[0].id, context.sections[0].id]]) {
+    const rejected = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ title: 'Invalid', sections }] } });
+    assert.equal(rejected.isError, true);
+  }
+  const stale = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: 'stale', groups: [{ title: 'Invalid', sections: [context.sections[0].id] }] } });
+  assert.equal(stale.isError, true);
 });

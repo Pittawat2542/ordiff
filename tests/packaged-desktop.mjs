@@ -51,7 +51,7 @@ test('signed bundle runs Git and MCP using only its own runtime and resources', 
   mcp.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const context = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: { includeDiff: true } })).content[0].text);
   assert.equal(context.sections[0].path, 'example.ts');
-  const plan = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ id: 'desktop', title: 'Desktop integration', description: '', steps: [{ sectionId: context.sections[0].id, explanation: 'Read the bundled backend result.' }] }] } });
+  const plan = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ title: 'Desktop integration', sections: [context.sections[0].id], explanations: { [context.sections[0].id]: 'Read the bundled backend result.' } }] } });
   assert.equal(plan.isError, undefined);
   assert.equal(JSON.parse(plan.content[0].text).behaviors, 1);
   const exited = once(child, 'exit');

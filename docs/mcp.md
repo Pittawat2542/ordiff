@@ -35,7 +35,9 @@ Client configuration formats differ; use these command, arguments, and environme
 
 ### `get_review_context`
 
-Returns the selected repository, current diff version, plan status, existing groups, and the IDs, paths, roles, hunk headers, and binary flags of its changed sections. It refreshes Git before responding.
+Returns the selected repository path, current diff version, and changed sections with IDs, paths, and hunk headers. Binary sections additionally carry `binary: true`. It refreshes Git before responding. Existing plans and diff lines are omitted by default.
+
+- Set `includePlan: true` to include `planStatus` and existing groups in the compact plan format.
 
 - `includeDiff` defaults to `false`; set it to `true` to include code lines.
 - Optionally pass up to 100 `sectionIds` to read a smaller set of hunks. Unknown or stale IDs are rejected.
@@ -44,9 +46,27 @@ Returns the selected repository, current diff version, plan status, existing gro
 
 ### `submit_review_plan`
 
-Accepts the `version` from the current context and a `groups` array. Each group has an `id`, `title`, `description`, and ordered `steps`. Each step contains an existing `sectionId` and an `explanation` of why that section belongs here.
+Accepts the current `version` and a `groups` array. Each group requires only a `title` and ordered `sections` containing existing section IDs:
 
-Plans contain 1–100 groups, each with 1–500 steps. Group IDs are unique simple names of 1–80 letters, digits, underscores, or hyphens. Titles are 1–160 characters, descriptions up to 1,000 characters, and step explanations up to 2,000 characters. A group cannot repeat a section.
+```json
+{
+  "version": "<version from get_review_context>",
+  "groups": [
+    {
+      "title": "Prevent empty tasks",
+      "sections": ["<api-section-id>", "<ui-section-id>", "<test-section-id>"]
+    }
+  ]
+}
+```
+
+Optionally add a `description` to a group and an `explanations` object keyed by that group's section IDs. Omit these when they add no useful context. Ordiff generates group IDs internally.
+
+Plans contain 1–100 groups, each with 1–500 sections. Titles must be nonblank and at most 160 characters; optional descriptions are limited to 1,000 characters and explanations to 2,000 characters each. A group cannot repeat a section. Explanations must reference sections in the same group.
+
+MCP uses JSON tool arguments validated by JSON Schema. Keep descriptive keys and omit redundant data; no custom serialization is needed. Agents that already know the changes can request metadata first and fetch diff lines only for sections they need to inspect.
+
+This replaces the previous MCP input containing group `id` and `steps` fields. Reconnect your MCP client to refresh its tool schema. The app's internal HTTP and persisted plan formats remain unchanged.
 
 The app picks up the submitted plan automatically. Sections outside all groups stay visible as **Ungrouped changes**. A section may be referenced by several behaviors; its review progress is counted once overall.
 
