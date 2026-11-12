@@ -74,14 +74,14 @@
   gap: 2px;
   padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--subtle);
 }
 .file-view-tabs button {
   min-block-size: 30px;
   padding: 5px 12px;
   border: 1px solid transparent;
-  border-radius: 4px;
+  border-radius: calc(var(--radius-control) - 2px);
   font-size: 12px;
   color: var(--secondary);
 }
@@ -97,7 +97,7 @@
 .file-version-switch button {
   min-block-size: 34px;
   padding: 6px 9px;
-  border-radius: 5px;
+  border-radius: calc(var(--radius-control) - 2px);
   font-size: 12px;
   color: var(--secondary);
 }
@@ -142,7 +142,7 @@
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--space-2);
   min-block-size: 54px;
   padding: 8px 16px;
   border-block-end: 1px solid var(--border);
@@ -164,7 +164,7 @@
 }
 .file-comparison .document-body {
   margin: 16px;
-  padding: 24px;
+  padding: var(--space-6);
 }
 @container file-comparison (max-width: 640px) {
   .file-comparison-grid {
@@ -211,7 +211,7 @@
   max-inline-size: 540px;
 }
 .preview-empty {
-  padding: 24px;
+  padding: var(--space-6);
   text-align: center;
   color: var(--muted);
   font-size: 14px;
@@ -221,7 +221,7 @@
   align-items: center;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 16px;
   border-block: 1px solid var(--border);
   color: var(--secondary);
@@ -230,7 +230,7 @@
 .preview-subtoolbar label {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .preview-subtoolbar select {
   max-inline-size: 220px;
@@ -238,13 +238,13 @@
   min-block-size: 32px;
   padding: 4px 8px;
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: calc(var(--radius-control) - 2px);
   background: var(--surface);
   color: var(--text);
   font-size: 12px;
 }
 .image-viewport {
-  padding: 24px;
+  padding: var(--space-6);
   min-block-size: 220px;
   max-block-size: 70dvh;
   overflow: auto;
@@ -254,7 +254,7 @@
     transparent 0% 50%
   );
   background-size: 20px 20px;
-  border-radius: 0 0 7px 7px;
+  border-radius: 0 0 11px 11px;
 }
 .image-viewport img {
   display: block;
@@ -345,15 +345,15 @@
 .prose-preview code {
   padding: 2px 5px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: calc(var(--radius-control) - 2px);
   background: var(--subtle);
   font: 13px/1.7 var(--font-code);
 }
 .prose-preview pre {
-  padding: 16px;
+  padding: var(--space-4);
   overflow: auto;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   background: var(--subtle);
 }
 .prose-preview pre code {
@@ -380,7 +380,7 @@
 .prose-preview img {
   max-inline-size: 100%;
   block-size: auto;
-  border-radius: 4px;
+  border-radius: calc(var(--radius-control) - 2px);
 }
 .prose-preview hr {
   border: 0;
@@ -401,7 +401,7 @@
   gap: 10px;
   padding: 12px 16px;
   border: 1px dashed var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-control);
   color: var(--secondary);
   font-size: 13px;
 }
@@ -460,7 +460,7 @@
   z-index: 2;
 }
 .pdf-pages {
-  padding: 16px;
+  padding: var(--space-4);
   max-block-size: 72dvh;
   overflow: auto;
   background: var(--subtle);
@@ -481,7 +481,7 @@
 .page-controls {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .page-controls > span {
   min-inline-size: 90px;
@@ -493,7 +493,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  gap: var(--space-6);
   padding: 32px;
   min-block-size: 220px;
   background: var(--subtle);
@@ -509,39 +509,39 @@
 @media (max-width: 600px) {
   .file-view-toolbar {
     padding: 8px 12px;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .file-version-switch {
     order: 2;
     flex-basis: 100%;
   }
   .markdown-preview {
-    padding: 16px;
+    padding: var(--space-4);
   }
   .document-body {
     padding: 20px;
     margin-inline: 12px;
   }
   .preview-subtoolbar {
-    padding-inline: 12px;
+    padding-inline: var(--space-3);
   }
   .preview-subtoolbar select {
     max-inline-size: 160px;
   }
   .image-viewport {
-    padding: 16px;
+    padding: var(--space-4);
   }
   .pdf-pages {
-    padding: 8px;
+    padding: var(--space-2);
   }
   .pdf-controls {
     gap: 6px;
   }
   .media-preview {
-    padding: 16px;
+    padding: var(--space-4);
   }
 }
-@media (pointer: coarse) {
+@media (pointer: coarse), (max-width: 600px) {
   .file-view-tabs button,
   .file-version-switch button,
   .file-download,

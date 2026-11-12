@@ -1,11 +1,21 @@
 @layer layout {
   .app-shell.has-feedback {
-    grid-template-columns: 288px minmax(0, 1fr) 336px;
+    grid-template-columns: 288px minmax(0, 1fr) 348px;
   }
   .feedback-rail {
+    margin-inline-start: min(var(--chrome-inset), 100%);
+    min-inline-size: 0;
     min-block-size: 0;
-    border-inline-start: 1px solid var(--border);
-    background: var(--subtle);
+    overflow: clip;
+    border: 1px solid var(--chrome-border);
+    border-radius: var(--radius-panel);
+    background: var(--chrome-solid);
+    box-shadow:
+      inset 0 1px 0 var(--chrome-highlight),
+      var(--shadow-chrome);
+  }
+  .feedback-rail > .feedback-panel {
+    inline-size: 334px;
   }
   .feedback-panel {
     display: flex;
@@ -32,15 +42,15 @@
     block-size: 20px;
     padding-inline: 5px;
     border: 1px solid var(--border);
-    border-radius: 5px;
+    border-radius: calc(var(--radius-control) - 2px);
     color: var(--secondary);
     background: var(--subtle);
     font: 11px var(--font-code);
     vertical-align: middle;
   }
   .feedback-toggle {
-    min-block-size: 32px;
-    padding: 4px 8px;
+    min-block-size: 36px;
+    padding: 5px 10px;
     gap: 6px;
     font-size: 12px;
   }
@@ -49,8 +59,8 @@
     block-size: 14px;
   }
   .build-prompt-button {
-    min-block-size: 32px;
-    padding: 5px 10px;
+    min-block-size: 36px;
+    padding: 6px 12px;
     gap: 7px;
     font-size: 12px;
   }
@@ -76,7 +86,7 @@
   .hunk-actions {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: var(--space-4);
     flex-shrink: 0;
   }
   .hunk-actions .text-button {
@@ -87,7 +97,7 @@
     display: flex;
     justify-content: space-between;
     align-items: center;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 21px 20px 18px;
   }
   .feedback-panel-header h2 {
@@ -123,7 +133,7 @@
     gap: 7px;
     font: 12px/1.6 var(--font-code);
     color: var(--strong);
-    margin-block-end: 16px;
+    margin-block-end: var(--space-4);
     overflow-wrap: anywhere;
   }
   .feedback-file-path .icon {
@@ -172,15 +182,15 @@
   }
   .feedback-comment {
     border: 1px solid var(--border);
-    border-radius: 7px;
+    border-radius: var(--radius-content);
     background: var(--surface);
-    margin-block-end: 12px;
+    margin-block-end: var(--space-3);
     overflow: hidden;
   }
   .comment-heading {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: var(--space-2);
     padding: 7px 9px;
   }
   .comment-heading .icon-button {
@@ -195,7 +205,7 @@
   .intent-select {
     color: var(--strong);
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: calc(var(--radius-control) - 2px);
     background: var(--subtle);
     padding: 3px 4px;
     font-size: 11px;
@@ -235,9 +245,9 @@
   }
   .feedback-warning {
     padding: 10px 11px;
-    background: var(--subtle);
+    background: var(--warning-bg);
     border-block-end: 1px solid var(--border);
-    color: var(--secondary);
+    color: var(--warning-text);
   }
   .feedback-warning > span {
     display: flex;
@@ -266,7 +276,7 @@
   }
   .feedback-panel-footer {
     display: grid;
-    gap: 12px;
+    gap: var(--space-3);
     padding: 16px 20px;
     border-block-start: 1px solid var(--border);
   }
@@ -300,7 +310,7 @@
     font-size: 12px;
     line-height: 1.6;
     color: var(--muted);
-    margin-block-end: 12px;
+    margin-block-end: var(--space-3);
   }
   .general-instructions textarea {
     inline-size: 100%;
@@ -318,8 +328,10 @@
     max-block-size: 100dvh;
     border: 0;
     border-inline-start: 1px solid var(--border);
-    background: var(--subtle);
+    border-radius: var(--radius-panel) 0 0 var(--radius-panel);
+    background: var(--chrome-solid);
     color: var(--text);
+    box-shadow: var(--shadow-floating);
   }
   .feedback-drawer::backdrop {
     background: rgb(0 0 0 / 0.3);
@@ -360,7 +372,7 @@
   .prompt-builder-header > div > p:last-child {
     color: var(--muted);
     font-size: 13px;
-    margin-block-start: 8px;
+    margin-block-start: var(--space-2);
     line-height: 1.5;
   }
   .prompt-builder-body {
@@ -371,6 +383,7 @@
     block-size: 540px;
   }
   .prompt-selection {
+    background: var(--surface);
     overflow: auto;
     min-inline-size: 0;
     padding: 22px 24px;
@@ -382,8 +395,8 @@
     align-items: center;
     justify-content: space-between;
     flex-wrap: wrap;
-    gap: 8px;
-    margin-block-end: 8px;
+    gap: var(--space-2);
+    margin-block-end: var(--space-2);
   }
   .prompt-section-heading h3 {
     margin: 0;
@@ -412,8 +425,8 @@
   }
   .prompt-file {
     border: 1px solid var(--border);
-    border-radius: 6px;
-    margin-block-end: 8px;
+    border-radius: var(--radius-control);
+    margin-block-end: var(--space-2);
     background: var(--surface);
   }
   .prompt-file.is-selected {
@@ -446,7 +459,7 @@
     cursor: pointer;
   }
   .prompt-file-details > div {
-    padding: 8px;
+    padding: var(--space-2);
     border-block-start: 1px solid var(--border);
     background: var(--subtle);
   }
@@ -473,7 +486,7 @@
   .include-general {
     display: flex;
     align-items: flex-start;
-    gap: 8px;
+    gap: var(--space-2);
     font-size: 12px;
     color: var(--strong);
     margin-block-end: 18px;
@@ -490,7 +503,7 @@
     flex-direction: column;
     min-block-size: 0;
     min-inline-size: 0;
-    padding: 24px;
+    padding: var(--space-6);
     background: var(--subtle);
   }
   .prompt-output > textarea {
@@ -499,7 +512,7 @@
     inline-size: 100%;
     resize: none;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: var(--radius-control);
     background: var(--surface);
     color: var(--text);
     font: 11px/1.8 var(--font-code);
@@ -534,7 +547,7 @@
   }
   .prompt-export-actions {
     display: flex;
-    gap: 8px;
+    gap: var(--space-2);
     flex-shrink: 0;
   }
   .prompt-export-actions button {
@@ -551,54 +564,9 @@
 }
 
 @layer responsive {
-  @media (min-width: 1280px) and (max-width: 1599px) {
-    .has-feedback .toolbar {
-      padding-inline: 16px;
-      gap: 8px;
-    }
-    .has-feedback .toolbar-context,
-    .has-feedback .toolbar-slash {
-      display: none;
-    }
-    .has-feedback .mcp-button > span:last-child,
-    .has-feedback .feedback-toggle > span:not(.feedback-count) {
-      display: none;
-    }
-    .has-feedback .mcp-button {
-      padding: 6px;
-    }
-  }
-  @media (max-width: 1279px) {
-    .toolbar-location {
-      min-inline-size: 0;
-    }
-    .toolbar-context {
-      max-inline-size: 140px;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .toolbar-actions .mcp-button > span:last-child {
-      display: none;
-    }
-    .toolbar-actions .mcp-button .icon {
-      display: block;
-    }
-    .toolbar-actions .mcp-button {
-      padding: 7px;
-    }
-  }
-  @media (min-width: 1024px) and (max-width: 1279px) {
-    .toolbar {
-      padding-inline: 16px;
-    }
-    .toolbar-context,
-    .toolbar-slash {
-      display: none;
-    }
-  }
   @media (max-width: 767px) {
     .prompt-builder {
+      padding: 0;
       inline-size: 100%;
       max-block-size: 100dvh;
       block-size: 100dvh;
@@ -635,7 +603,7 @@
     .prompt-builder-footer {
       align-items: stretch;
       flex-direction: column;
-      gap: 12px;
+      gap: var(--space-3);
       padding: 14px 20px max(14px, env(safe-area-inset-bottom));
     }
     .prompt-export-actions button {
@@ -652,15 +620,11 @@
       background: transparent;
       padding-inline: 4px;
     }
-    .toolbar-actions .mcp-button,
-    .toolbar-actions > .icon-button:last-child {
-      display: none;
-    }
     .toolbar-repo {
-      max-inline-size: 75px;
+      max-inline-size: 120px;
     }
     .build-prompt-button {
-      padding-inline: 8px;
+      padding-inline: var(--space-2);
     }
     .build-prompt-button > .icon {
       display: none;
@@ -672,7 +636,7 @@
       gap: 0;
     }
     .hunk-heading {
-      gap: 12px;
+      gap: var(--space-3);
     }
     .hunk-heading > span:first-child {
       min-inline-size: 0;
