@@ -4,3 +4,8 @@ dist/
 output/
 .playwright-cli/
 .ordiff/
+src-tauri/target/
+src-tauri/resources/
+src-tauri/binaries/
+src-tauri/gen/
+.desktop-cache/

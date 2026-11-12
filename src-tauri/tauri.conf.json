@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Ordiff",
+  "version": "0.2.0",
+  "identifier": "local.ordiff.desktop",
+  "build": {
+    "frontendDist": "./bootstrap",
+    "beforeBuildCommand": "npm run build && node scripts/desktop-prepare.mjs"
+  },
+  "app": {
+    "windows": [],
+    "security": { "capabilities": [] }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["app"],
+    "icon": ["icons/icon.icns", "icons/icon.png"],
+    "externalBin": ["binaries/node"],
+    "resources": { "resources/": "runtime/" },
+    "macOS": { "minimumSystemVersion": "14.0", "signingIdentity": "-", "entitlements": "Entitlements.plist" }
+  }
+}

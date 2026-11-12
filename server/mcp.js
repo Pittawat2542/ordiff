@@ -8,7 +8,7 @@ if (base.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]'].includes(b
 async function request(endpoint, body = {}) {
   let response;
   try { response = await fetch(new URL(endpoint, base), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: AbortSignal.timeout(20000) }); }
-  catch { throw new Error('Ordiff is not reachable. Start it with npm run dev, then open a repository in the app.'); }
+  catch { throw new Error('Ordiff is not reachable. Open Ordiff (or run npm run dev), then open a repository in the app.'); }
   const data = await response.json();
   if (!response.ok) throw new Error(data.error || 'Ordiff could not complete the request.');
   return data.workspace;

@@ -11,13 +11,19 @@
     "mcp": "node server/mcp.js",
     "typecheck": "tsc --noEmit",
     "test:core": "tsx --test tests/*.test.js",
-    "test:ui": "vitest run"
+    "test:ui": "vitest run",
+    "desktop:prepare": "npm run build && node scripts/desktop-prepare.mjs",
+    "desktop:dev": "npm run desktop:prepare && tauri dev --no-watch",
+    "desktop:build": "tauri build",
+    "desktop:install": "node scripts/desktop-install.mjs",
+    "desktop:verify": "node --test tests/packaged-desktop.mjs"
   },
   "engines": {
     "node": ">=22.13.0"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.5",
+    "@tauri-apps/cli": "^2.12.4",
     "@testing-library/jest-dom": "^7.0.1",
     "@testing-library/react": "^16.3.3",
     "@types/node": "^26.6.6",

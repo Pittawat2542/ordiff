@@ -1,11 +1,10 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { runFile } from './processes.js';
 import { realpath, lstat, readFile, readlink, open } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describeFile, fileFormat } from './files.js';
 
-const exec = promisify(execFile);
+const exec = runFile;
 export const hash = value => createHash('sha256').update(value).digest('hex').slice(0, 24);
 async function git(path, args) {
   return (await exec('git', ['--no-pager', '-c', 'core.quotePath=false', '-C', path, ...args], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024, timeout: 15000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } })).stdout;

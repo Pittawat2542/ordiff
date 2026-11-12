@@ -1,14 +1,13 @@
 import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import { resolve, relative, isAbsolute, extname, basename, dirname } from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
+import { runFile } from './processes.js';
 import { createHash } from 'node:crypto';
 import { Worker } from 'node:worker_threads';
 import { fromMarkdown } from 'mdast-util-from-markdown';
 
 export const MAX_FILE_BYTES = 25 * 1024 * 1024;
-const exec = promisify(execFile);
+const exec = runFile;
 const digest = value => createHash('sha256').update(value).digest('hex').slice(0, 24);
 export class FileError extends Error {
   constructor(status, message) { super(message); this.status = status; }

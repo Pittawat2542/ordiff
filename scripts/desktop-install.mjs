@@ -1,0 +1,20 @@
+import { access, cp, mkdir, rename, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { spawnSync } from 'node:child_process';
+
+const source = fileURLToPath(new URL('../src-tauri/target/release/bundle/macos/Ordiff.app', import.meta.url));
+const applications = join(homedir(), 'Applications');
+const target = join(applications, 'Ordiff.app');
+await access(source);
+const running = spawnSync('/usr/bin/pgrep', ['-f', `${target}/Contents/MacOS/ordiff-desktop`]);
+if (running.status === 0) throw new Error('Quit Ordiff before installing this update.');
+await mkdir(applications, { recursive: true });
+const staging = join(applications, '.Ordiff-install.app');
+await rm(staging, { recursive: true, force: true });
+await cp(source, staging, { recursive: true, preserveTimestamps: true });
+await rm(target, { recursive: true, force: true });
+await rename(staging, target);
+spawnSync('/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister', ['-f', target]);
+console.log(`Installed ${target}\nOpen Ordiff from Spotlight, Finder, or the Dock. Choose Options → Keep in Dock to pin it.`);
