@@ -9,7 +9,7 @@
   },
   "app": {
     "windows": [],
-    "security": { "capabilities": [] }
+    "security": { "capabilities": ["repository-picker"] }
   },
   "bundle": {
     "active": true,

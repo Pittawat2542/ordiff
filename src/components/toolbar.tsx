@@ -202,9 +202,17 @@ export function Toolbar({
           className={workspace ? "toolbar-brand mobile-only" : "toolbar-brand"}
         />
         {workspace && (
-          <span className="toolbar-repo" title={workspace.repo.name}>
-            {workspace.repo.name}
-          </span>
+          <Button
+            variant="unstyled"
+            className="toolbar-repo repository-switcher"
+            title={workspace.repo.path}
+            aria-label={`Switch repository: ${workspace.repo.name}`}
+            aria-haspopup="dialog"
+            aria-controls="repository-dialog"
+            onClick={() => openDialog("repository")}
+          >
+            <span>{workspace.repo.name}</span><Icon name="down" />
+          </Button>
         )}
         <span className="toolbar-slash">/</span>
         <span className="toolbar-context">

@@ -142,10 +142,24 @@ export interface McpConfig {
   >;
 }
 
+export interface RecentRepository {
+  name: string;
+  path: string;
+}
+
+export interface DirectoryListing {
+  path: string;
+  parentPath: string | null;
+  homePath: string;
+  breadcrumbs: { name: string; path: string }[];
+  directories: { name: string; path: string }[];
+}
+
 export interface WorkspaceResponse {
   revision: number;
   workspace: Workspace | null;
   unchanged?: boolean;
   defaultPath?: string;
   mcpConfig?: McpConfig | null;
+  recentRepositories?: RecentRepository[];
 }

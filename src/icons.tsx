@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 const paths: Record<string, ReactNode> = {
+  folder: <path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11H3V7Z" />,
   up: <path d="m6 15 6-6 6 6" />,
   compare: <><path d="M12 3v18M3 3h18v18H3zM6 8h3M6 12h3M15 8h3M15 12h3M15 16h3" /></>,
   external: <><path d="M14 3h7v7m0-7L10 14M10 3H3v18h18v-7" /></>,

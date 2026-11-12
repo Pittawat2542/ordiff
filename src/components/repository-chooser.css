@@ -1,0 +1,371 @@
+@layer components {
+  .sheet-dialog.repository-dialog {
+    inline-size: min(460px, calc(100% - 32px));
+    padding: 24px;
+    border-radius: 16px;
+  }
+  .repository-dialog .dialog-heading {
+    gap: 16px;
+    margin-block-end: 2px;
+  }
+  .repository-dialog .dialog-heading h2 {
+    margin: 0;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+  .repository-dialog .dialog-heading > button {
+    margin: -4px -6px -4px 0;
+  }
+  .repository-dialog .dialog-intro {
+    font-size: 13px;
+  }
+  .repository-chooser {
+    inline-size: 100%;
+    margin-block-start: 20px;
+    text-align: start;
+  }
+  .repository-chooser .connect-form {
+    margin-block-start: 16px;
+  }
+  .repository-chooser .connect-form > label {
+    font-size: 11px;
+    font-weight: 400;
+    color: var(--muted);
+    margin-block-end: 6px;
+  }
+  .repository-chooser .primary-button {
+    border-radius: var(--radius-control);
+    box-shadow: none;
+  }
+  .browse-folders {
+    min-block-size: 44px;
+    justify-content: center;
+    gap: 9px;
+  }
+  .repository-path-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .repository-chooser .repo-input-wrap {
+    min-inline-size: 0;
+    min-block-size: 40px;
+    padding-inline: 10px;
+    background: var(--field);
+  }
+  .repository-chooser .repo-input-wrap input {
+    min-block-size: 38px;
+    font-size: 12px;
+  }
+  .repository-path-open {
+    padding: 8px 12px;
+    font-size: 12px;
+    box-shadow: none;
+  }
+  .repository-path-open .icon {
+    inline-size: 14px;
+  }
+  .repository-chooser .form-error {
+    margin-block: 8px 0;
+    font-size: 12px;
+  }
+  .repository-chooser .form-error:empty {
+    margin: 0;
+  }
+  .recent-repositories {
+    margin-block-start: 20px;
+    padding-block-start: 12px;
+    border-block-start: 1px solid var(--border);
+  }
+  .recent-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-block-end: 4px;
+  }
+  .recent-heading > .recent-search {
+    flex: 1;
+    min-inline-size: 0;
+    max-inline-size: 160px;
+  }
+  .recent-repositories h3 {
+    color: var(--secondary);
+    font-size: 12px;
+    font-weight: 500;
+    margin: 0;
+    flex-shrink: 0;
+  }
+  .folder-location-row input {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    background: var(--surface);
+  }
+  .recent-search {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-inline: 6px;
+    border-radius: 4px;
+    color: var(--muted);
+  }
+  .recent-search .icon {
+    inline-size: 13px;
+  }
+  .recent-search input {
+    border: 0;
+    background: none;
+    block-size: 32px;
+    color: var(--text);
+    font-size: 12px;
+    outline: none;
+  }
+  .recent-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    max-block-size: 240px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+  }
+  .recent-list li {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+  }
+  .recent-list li + li {
+    border-block-start: 1px solid var(--hairline);
+  }
+  .recent-list li > .icon-button {
+    color: var(--muted);
+    opacity: 0;
+  }
+  .recent-list li:is(:hover, :focus-within) > .icon-button {
+    opacity: 1;
+  }
+  .recent-repository,
+  .folder-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-inline-size: 0;
+    padding: 10px 4px;
+    text-align: start;
+    border-radius: var(--radius-control);
+    color: var(--text);
+    flex: 1;
+  }
+  .recent-repository:hover,
+  .folder-row:hover {
+    background: var(--subtle);
+  }
+  .recent-repository > .icon,
+  .folder-row > .icon {
+    flex-shrink: 0;
+    color: var(--muted);
+    inline-size: 16px;
+  }
+  .recent-copy {
+    flex: 1;
+    min-inline-size: 0;
+    display: grid;
+    gap: 3px;
+  }
+  .recent-copy strong {
+    font-size: 13px;
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+  .recent-copy small {
+    font: 11px/1.5 var(--font-code);
+    color: var(--muted);
+    overflow-wrap: anywhere;
+  }
+  .current-repository {
+    color: var(--secondary);
+    font-size: 10px;
+    flex-shrink: 0;
+  }
+  .chooser-empty {
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+    padding: 16px 4px;
+  }
+  .chooser-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-block-start: 16px;
+  }
+  .chooser-footer p {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .chooser-footer p .icon {
+    inline-size: 12px;
+    block-size: 12px;
+  }
+  .chooser-footer .disconnect-button {
+    margin: 0;
+    min-block-size: 28px;
+    padding: 0;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .chooser-footer .disconnect-button:hover {
+    color: var(--remove-text);
+  }
+  .folder-browser > .text-button {
+    margin-block-end: 12px;
+    gap: 4px;
+  }
+  .folder-location label {
+    display: block;
+    font-size: 12px;
+    color: var(--secondary);
+    margin-block-end: 8px;
+  }
+  .folder-location-row {
+    display: flex;
+    gap: 8px;
+  }
+  .folder-location-row input {
+    min-inline-size: 0;
+    padding: 8px 10px;
+    color: var(--text);
+    font: 12px var(--font-code);
+  }
+  .folder-controls {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-block: 12px;
+  }
+  .folder-controls > button {
+    min-block-size: 32px;
+    padding: 4px 8px;
+    font-size: 12px;
+    gap: 4px;
+  }
+  .folder-controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-inline-start: auto;
+    color: var(--secondary);
+    font-size: 11px;
+    white-space: nowrap;
+  }
+  .folder-controls input {
+    accent-color: var(--strong);
+  }
+  .folder-breadcrumbs {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    gap: 4px;
+    margin-block-end: 8px;
+  }
+  .folder-breadcrumbs > span {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    min-inline-size: 0;
+    flex-shrink: 0;
+  }
+  .folder-breadcrumbs .text-button {
+    font: 11px/1.6 var(--font-code);
+    white-space: nowrap;
+  }
+  .folder-breadcrumbs [aria-current] {
+    color: var(--strong);
+  }
+  .folder-breadcrumbs > span > span {
+    color: var(--faint);
+    font-size: 11px;
+  }
+  .folder-list {
+    block-size: min(240px, 32dvh);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-control);
+    scrollbar-width: thin;
+  }
+  .folder-row {
+    inline-size: 100%;
+    min-block-size: 38px;
+    font-size: 13px;
+    padding-inline: 10px;
+  }
+  .folder-browser > .wide-button {
+    margin-block-start: 12px;
+  }
+  .folder-row span {
+    flex: 1;
+    overflow-wrap: anywhere;
+  }
+  .repository-switcher {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    border-radius: var(--radius-control);
+    padding: 4px 6px;
+    margin-inline-start: -6px;
+  }
+  .repository-switcher:hover {
+    background: var(--subtle);
+  }
+  .repository-switcher span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .repository-switcher > .icon {
+    inline-size: 13px;
+    flex-shrink: 0;
+    color: var(--muted);
+  }
+}
+
+@layer responsive {
+  @media (hover: none), (pointer: coarse) {
+    .recent-list li > .icon-button {
+      opacity: 0.7;
+    }
+  }
+  @media (max-width: 600px) {
+    .repository-chooser
+      :is(.repository-path-open, .repo-input-wrap input, .recent-search input) {
+      min-block-size: 44px;
+    }
+    .repository-chooser
+      :is(.repo-input-wrap input, .folder-location-row input) {
+      font-size: 16px;
+    }
+    .sheet-dialog.repository-dialog {
+      padding: 20px;
+    }
+  }
+}
+
+@layer accessibility {
+  .repository-chooser :is(.repo-input-wrap, .recent-search):focus-within {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .repository-chooser
+    :is(.repo-input-wrap, .recent-search)
+    input:focus-visible {
+    outline: none;
+  }
+}

@@ -18,6 +18,73 @@ use tauri_plugin_dialog::DialogExt;
 
 const ORIGIN: &str = "http://127.0.0.1:47831";
 
+#[derive(Default)]
+struct RepositoryPicker(Arc<AtomicBool>);
+
+struct PickerLease(Arc<AtomicBool>);
+
+impl Drop for PickerLease {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+}
+
+#[tauri::command]
+async fn pick_repository_directory(
+    window: tauri::WebviewWindow,
+    initial_path: Option<String>,
+) -> Result<Option<String>, String> {
+    let url = window.url().map_err(|e| e.to_string())?;
+    if window.label() != "main" || !local(&url) || url.path() != "/" {
+        return Err("Repository selection is only available in the main Ordiff window.".into());
+    }
+    let picking = window.state::<RepositoryPicker>().0.clone();
+    if picking.swap(true, Ordering::SeqCst) {
+        return Err("A folder picker is already open.".into());
+    }
+    let lease = PickerLease(picking);
+    tauri::async_runtime::spawn_blocking(move || {
+        let _lease = lease;
+        let home = window
+            .app_handle()
+            .path()
+            .home_dir()
+            .map_err(|e| e.to_string())?;
+        let candidate = initial_path.map(|path| {
+            let path = path.trim();
+            if path == "~" {
+                home.clone()
+            } else if let Some(relative) = path.strip_prefix("~/") {
+                home.join(relative)
+            } else {
+                PathBuf::from(path)
+            }
+        });
+        let directory = candidate.filter(|path| path.is_dir()).unwrap_or(home);
+        window
+            .app_handle()
+            .dialog()
+            .file()
+            .set_parent(&window)
+            .set_title("Open a repository")
+            .set_directory(directory)
+            .blocking_pick_folder()
+            .map(|selected| {
+                selected
+                    .into_path()
+                    .map_err(|e| e.to_string())
+                    .and_then(|path| {
+                        path.into_os_string()
+                            .into_string()
+                            .map_err(|_| "This folder path is not valid UTF-8.".to_string())
+                    })
+            })
+            .transpose()
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[derive(Clone)]
 struct Backend {
     input: Arc<Mutex<Option<ChildStdin>>>,
@@ -280,6 +347,8 @@ fn show_startup_error(app: &tauri::AppHandle, message: &str) -> tauri::Result<()
 
 fn main() {
     let app = tauri::Builder::default()
+        .manage(RepositoryPicker::default())
+        .invoke_handler(tauri::generate_handler![pick_repository_directory])
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             focus_window(app);
         }))

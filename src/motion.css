@@ -132,13 +132,11 @@
       transform: translateY(1px);
       transition-duration: 80ms;
     }
-    .build-prompt-button > .icon,
-    .welcome-secondary .text-button > .icon {
+    .build-prompt-button > .icon {
       transition: transform var(--motion-fast) var(--ease-settle);
     }
     @media (hover: hover) {
-      .build-prompt-button:hover:not(:disabled) > .icon,
-      .welcome-secondary .text-button:hover > .icon {
+      .build-prompt-button:hover:not(:disabled) > .icon {
         transform: translateX(2px);
       }
     }

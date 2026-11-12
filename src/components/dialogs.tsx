@@ -1,17 +1,11 @@
-import {
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useExitPresence } from "../hooks/use-exit-presence";
 import { Icon } from "../icons";
 import type { ReviewController } from "../hooks/use-review";
 import type { ReviewAction } from "../types";
 import { Button } from "./ui/button";
 import { Brand } from "./brand";
-import { Input } from "./ui/input";
+import { RepositoryChooser } from "./repository-chooser";
 import { Textarea } from "./ui/textarea";
 import { TextDiffLink } from "./text-diff-link";
 
@@ -84,117 +78,21 @@ export function NativeDialog({
   );
 }
 
-export function RepositoryForm({
-  review,
-  inDialog = false,
-  onConnected,
-}: {
-  review: ReviewController;
-  inDialog?: boolean;
-  onConnected?: () => void;
-}) {
-  const initialPath =
-    inDialog && review.mode === "git"
-      ? review.workspace?.repo.path || ""
-      : review.defaultPath;
-  const [path, setPath] = useState(initialPath);
-  const [dirty, setDirty] = useState(false);
-  const [error, setError] = useState("");
-  useEffect(() => {
-    if (!dirty) setPath(initialPath);
-  }, [initialPath, dirty]);
-  const inputId = inDialog ? "dialog-repo-path" : "repo-path",
-    errorId = inDialog ? "dialog-repo-error" : "repo-error";
-  return (
-    <form
-      className="connect-form"
-      onSubmit={async (event) => {
-        event.preventDefault();
-        setError("");
-        try {
-          if (await review.connectRepository(path)) onConnected?.();
-        } catch (error) {
-          setError(
-            error instanceof Error
-              ? error.message
-              : "The repository could not be opened.",
-          );
-        }
-      }}
-    >
-      <label htmlFor={inputId}>
-        {inDialog ? "Repository path" : "Local repository"}
-      </label>
-      <div className="repo-input-wrap">
-        {!inDialog && <Icon name="repo" />}
-        <Input
-          id={inputId}
-          name="path"
-          type="text"
-          value={path}
-          onChange={(event) => {
-            setDirty(true);
-            setPath(event.target.value);
-          }}
-          placeholder={inDialog ? undefined : "/path/to/your/repository"}
-          required
-          autoComplete="off"
-          spellCheck={false}
-          autoFocus={inDialog}
-          aria-describedby={inDialog ? errorId : `repo-hint ${errorId}`}
-        />
-      </div>
-      {!inDialog && (
-        <p id="repo-hint" className="field-hint">
-          Reads staged, unstaged, and untracked changes. Your Git files stay
-          untouched.
-        </p>
-      )}
-      <p id={errorId} className="form-error" role="alert">
-        {error || (!inDialog ? review.serviceError : "")}
-      </p>
-      <Button className="wide-button" type="submit" disabled={review.busy}>
-        {review.busy ? "Opening…" : "Open repository"}
-        {!inDialog && <Icon name="arrow" />}
-      </Button>
-    </form>
-  );
-}
 export function Onboarding({ review }: { review: ReviewController }) {
   return (
     <section className="onboarding">
       <div className="welcome-mark">
         <Brand />
       </div>
-      <p className="eyebrow">A LITTLE LESS TO HOLD IN YOUR HEAD</p>
-      <h1>
-        Follow the change.
-        <br />
-        Keep the context.
-      </h1>
+      <h1>Follow the change.</h1>
       <p className="welcome-description">
-        A calmer review starts with your repository.
-        <br /> Follow the changes. Give your agent a clear next step.
+        Open a local repository to start your review.
       </p>
-      <RepositoryForm review={review} />
+      <RepositoryChooser review={review} />
       <div className="welcome-secondary">
-        <span>Just looking around?</span>
         <Button variant="link" onClick={review.startDemo}>
-          Try the sample review <Icon name="arrow" />
+          Try the sample review
         </Button>
-      </div>
-      <div className="welcome-steps">
-        <span>
-          <i>1</i>Open your repo
-        </span>
-        <span>
-          <i>2</i>Review & comment
-        </span>
-        <span>
-          <i>3</i>Build your prompt
-        </span>
-      </div>
-      <div className="welcome-utility">
         <TextDiffLink />
       </div>
     </section>
@@ -247,40 +145,48 @@ export function AppDialog({
       open={!!kind}
       onClose={close}
       titleId={displayKind ? titles[displayKind] : undefined}
-      className={`sheet-dialog ${displayKind === "mcp" ? "mcp-dialog" : ""}`}
+      className={`sheet-dialog ${displayKind === "mcp" ? "mcp-dialog" : displayKind === "repository" ? "repository-dialog" : ""}`}
       id={displayKind ? `${displayKind}-dialog` : undefined}
     >
       {displayKind && (
         <>
           <div className="dialog-heading flex items-center justify-between">
-            <span className="dialog-emblem">
-              {displayKind === "help" ? "?" : <Icon name={icon} />}
-            </span>
+            {displayKind === "repository" ? (
+              <h2 id="repository-title">Open a repository</h2>
+            ) : (
+              <span className="dialog-emblem">
+                {displayKind === "help" ? "?" : <Icon name={icon} />}
+              </span>
+            )}
             <Button variant="ghost" aria-label={closeLabel} onClick={close}>
               <Icon name="close" />
             </Button>
           </div>
           {displayKind === "repository" && (
             <>
-              <h2 id="repository-title">Open a repository</h2>
-              <p className="dialog-intro">
-                Review the working changes in a local Git checkout.
-              </p>
-              <RepositoryForm review={review} inDialog onConnected={close} />
-              {review.workspace && (
-                <Button
-                  variant="link"
-                  className="disconnect-button"
-                  disabled={review.busy}
-                  onClick={async () => {
-                    if (await review.disconnect()) close();
-                  }}
-                >
-                  {review.mode === "demo"
-                    ? "Close sample review"
-                    : "Close repository"}
-                </Button>
-              )}
+              <p className="dialog-intro">Choose a local Git checkout.</p>
+              <RepositoryChooser
+                review={review}
+                inDialog
+                active={kind === "repository"}
+                onConnected={close}
+                footerAction={
+                  review.workspace && (
+                    <Button
+                      variant="link"
+                      className="disconnect-button"
+                      disabled={review.busy}
+                      onClick={async () => {
+                        if (await review.disconnect()) close();
+                      }}
+                    >
+                      {review.mode === "demo"
+                        ? "Close sample review"
+                        : "Close repository"}
+                    </Button>
+                  )
+                }
+              />
             </>
           )}
           {displayKind === "mcp" && (

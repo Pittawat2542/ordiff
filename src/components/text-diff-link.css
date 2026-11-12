@@ -23,12 +23,6 @@
     inline-size: 12px;
     block-size: 12px;
   }
-  .welcome-utility {
-    margin-block-start: 24px;
-  }
-  .welcome-utility .text-diff-link {
-    color: var(--muted);
-  }
   .toolbar-utilities > .text-diff-link {
     border-inline-start: 1px solid var(--border);
     border-radius: 0;

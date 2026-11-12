@@ -5,6 +5,7 @@ import { useFeedback } from "./use-feedback";
 import { isPageHidden } from "../lib/visibility";
 import type {
   McpConfig,
+  RecentRepository,
   ReviewAction,
   ReviewDataset,
   ReviewState,
@@ -90,6 +91,7 @@ export function useReview() {
   });
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [defaultPath, setDefaultPath] = useState("");
+  const [recentRepositories, setRecentRepositories] = useState<RecentRepository[]>([]);
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -199,6 +201,7 @@ export function useReview() {
         if (data.defaultPath) setDefaultPath(data.defaultPath);
         if (data.mcpConfig) setMcpConfig(data.mcpConfig);
         if (started !== generation.current) return;
+        if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
         setServiceError("");
         if (data.unchanged) return;
         revision.current = data.revision;
@@ -394,7 +397,23 @@ export function useReview() {
     try {
       const data = await api("repository", { path: path.trim() });
       revision.current = data.revision;
+      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
       applyWorkspace(data.workspace);
+      return true;
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+  async function removeRecentRepository(path: string): Promise<boolean> {
+    if (busyRef.current) return false;
+    busyRef.current = true;
+    setBusy(true);
+    generation.current++;
+    try {
+      const data = await api("recent-repositories/remove", { path });
+      revision.current = data.revision;
+      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
       return true;
     } finally {
       busyRef.current = false;
@@ -415,6 +434,7 @@ export function useReview() {
     try {
       const data = await api("refresh", {});
       revision.current = data.revision;
+      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
       const changed =
         current.current.workspace?.version !== data.workspace?.version;
       applyWorkspace(data.workspace);
@@ -439,6 +459,7 @@ export function useReview() {
       if (session.mode === "git") {
         const data = await api("disconnect", {});
         revision.current = data.revision;
+        if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
       }
       applyWorkspace(null);
       return true;
@@ -523,6 +544,7 @@ export function useReview() {
       setTheme((value) => (value === "light" ? "dark" : "light")),
     storageAvailable,
     defaultPath,
+    recentRepositories,
     mcpConfig,
     serviceError,
     busy,
@@ -533,6 +555,7 @@ export function useReview() {
     canUndo: !!session.undo,
     undoLastMark,
     connectRepository,
+    removeRecentRepository,
     refreshDiff,
     disconnect,
     startDemo,
