@@ -33,9 +33,15 @@ npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The interface and local API share one Vite process. Enter a repository's absolute local path, or choose **Try the sample review** to explore the workflow without connecting a checkout.
+Open `http://127.0.0.1:5173`. The interface and local API share one Vite process. Choose **Browse folders**, enter a repository's local path, or choose **Try the sample review** to explore the workflow without connecting a checkout. Paths beginning with `~/` are supported.
 
 Ordiff reads the combined changes against HEAD: staged, unstaged, and non-ignored untracked files. Repositories without commits are supported. Git access is read-only; opening a repository or recording progress does not stage, commit, discard, or edit its files.
+
+## Open and switch repositories
+
+**Browse folders** opens the native macOS folder picker in the desktop app. In the browser, navigate local folders with breadcrumbs, **Up**, **Home**, or a folder path, then choose **Open this folder**. Enable **Show hidden folders** when needed. Selecting a subfolder opens its Git repository root; Git worktrees are supported.
+
+The welcome screen and repository dialog show the 10 most recently opened repositories. Search by name or full path, select a row to reopen it, or use its remove button to forget the entry. Removing an entry keeps any current review open. Click the repository name in the toolbar, or **Repository settings** in the navigation panel, to switch repositories. A cancelled picker or failed connection preserves your current review.
 
 ## Review changes
 
@@ -96,7 +102,7 @@ See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and th
 
 ## Local state
 
-Repository selection and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json` during browser development, or `~/Library/Application Support/Ordiff/workspace.json` in the desktop app. Review progress, feedback, checklists, and appearance are saved in this browser or the desktop app's persistent WebView. **Close repository** returns to onboarding and clears the server's active repository and plan; saved feedback remains available when you reopen that repository. A failed connection preserves the current workspace.
+Repository selection, recent repository history, and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json` during browser development, or `~/Library/Application Support/Ordiff/workspace.json` in the desktop app. History belongs to that local backend; desktop and browser development keep separate histories. Review progress, feedback, checklists, and appearance are saved in this browser or the desktop app's persistent WebView. **Close repository** returns to onboarding and clears the server's active repository and plan; recent history and saved feedback remain available when you reopen a repository. A failed connection preserves the current workspace.
 
 Review progress belongs to an exact repository and diff version. Refreshing changed contents starts fresh review progress while keeping feedback; refreshing an unchanged diff preserves progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
 

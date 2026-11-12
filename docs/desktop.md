@@ -21,13 +21,13 @@ The native app waits for an explicit backend readiness message before opening th
 
 Closing the final window or choosing Quit closes the backend's parent pipe. Node terminates active Git subprocesses, closes HTTP/SSE connections, and exits, including document workers. A blocked shutdown has a five-second native termination deadline. Native crashes also close the pipe, so the backend exits without a periodic heartbeat. MCP adapters belong to their clients; they remain idle until a tool call, and report when Ordiff is unavailable.
 
-Workspace selection and agent plans persist in `~/Library/Application Support/Ordiff/workspace.json`. Review progress, feedback, and appearance use the existing storage keys in a stable, dedicated persistent WebKit data store. Browser state is independent and is not imported. The desktop origin differs from Vite's development port, so both can run together.
+Workspace selection, the ten most recent repositories, and agent plans persist in `~/Library/Application Support/Ordiff/workspace.json`. Closing a repository keeps its history; removing a recent entry leaves the active review open. Review progress, feedback, and appearance use the existing storage keys in a stable, dedicated persistent WebKit data store. Browser state is independent and is not imported. The desktop origin differs from Vite's development port, so both can run together.
 
 ## Idle work
 
 `GET /api/events` publishes revision notifications without heartbeat traffic. The UI retrieves a snapshot after changes and resynchronizes after a hidden window is shown. It disconnects while hidden, minimized, unfocused on desktop, or in sample mode. Reconnection after failure uses bounded exponential backoff, with no retry activity while hidden. Native focus events supplement Page Visibility for macOS window minimization and app switching.
 
-Git runs only on repository selection, explicit refresh, and MCP operations. Document parsers remain lazy and bounded. Hidden media pauses without automatically restarting; CSS animations pause while hidden, and reduced-motion behavior remains supported. The loopback content has no privileged Tauri commands; external navigation is handled outside the WebView.
+Git runs only on repository selection, explicit refresh, and MCP operations. Document parsers remain lazy and bounded. Hidden media pauses without automatically restarting; CSS animations pause while hidden, and reduced-motion behavior remains supported. The main loopback review window has one narrowly scoped Tauri command, `pick_repository_directory`, for opening the native single-folder dialog. Its capability and runtime checks restrict it to that window and origin; it exposes no filesystem or shell commands. External navigation is handled outside the WebView.
 
 ## Verification
 
@@ -41,6 +41,8 @@ npm run desktop:verify
 ```
 
 Exercise a real repository, same-diff refresh, MCP plan submission, prompt copying and downloading, image/document previews, and the text-diff window. Confirm review state and appearance persist across quit/relaunch. Test repeated launch, an occupied port, unexpected backend exit, native-parent termination, minimization/resume, and closing the final window. Confirm app-owned processes terminate and port 47831 is released. Test sleep/wake on the laptop during normal use.
+
+For repository selection, use **Browse folders** from onboarding and the toolbar repository switcher. Verify native cancellation, an invalid folder, and a valid checkout (including a path containing spaces). Check recent search/removal and persistence across relaunch, and confirm that failures preserve the current review. In browser development, exercise breadcrumbs, Up/Home, hidden folders, and explicit folder opening in the in-app browser. Check both appearances, a narrow window, keyboard focus return, and Escape dismissal.
 
 For energy measurement, use the release app and let startup settle. In Activity Monitor inspect Ordiff, its bundled Node backend, and associated WebKit helpers. Measure five minutes of foreground idle and five minutes minimized; record total CPU time deltas, RSS, and Energy Impact. The idle target is less than 1% of one core averaged across the process group, with zero recurring application polling or Git scans. Also inspect active reading and a document preview. Energy Impact is a relative macOS score; CPU measurements alone do not establish battery runtime.
 
