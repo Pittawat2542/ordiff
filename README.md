@@ -6,7 +6,7 @@ Current release: **0.3.0**. See the [changelog](CHANGELOG.md) for features and r
 
 Ordiff is a local Git review workspace. Open a checkout, inspect working changes, branch comparisons, or two commits, and optionally connect an agent through MCP to organize the changed hunks into an ordered reading path. Review decisions stay with you.
 
-![Ordiff showing a behavior's sections in one navigation panel, a highlighted unified diff, optional context, and a stable review footer.](docs/images/review-workspace.jpg)
+![Ordiff 0.3.0 running the sample review, with behavior navigation, an expanded explanation, a highlighted unified diff, and review controls.](docs/images/review-workspace.png)
 
 ## Run locally
 
@@ -122,7 +122,7 @@ See [the development guide](docs/development.md) for source layout, rendering pa
 
 ## Complete review cycles
 
-![Review-cycle controls and captured line feedback in the responsive review workspace.](docs/images/review-cycle.png)
+![Ordiff's sample review-cycle walkthrough showing the current pass, a deferred section, and addressed line feedback awaiting human verification.](docs/images/review-cycle.png)
 
 The comparison toolbar selects working changes, branch changes from a merge-base, or two commits. All refs are local or already fetched. The pass selector keeps prior reviews readable; **Since previous pass** shows added, modified, unchanged, and removed sections. Every new pass requires confirmation, including **Previously reviewed · Reconfirm** sections.
 
