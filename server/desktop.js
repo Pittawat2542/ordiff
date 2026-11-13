@@ -9,7 +9,8 @@ import { stopProcesses } from './processes.js';
 
 const root = resolve(process.env.ORDIFF_UI_DIR || fileURLToPath(new URL('../dist', import.meta.url)));
 const data = process.env.ORDIFF_DATA_DIR || resolve(homedir(), 'Library/Application Support/Ordiff');
-const api = createApi({ store: new WorkspaceStore({ stateFile: resolve(data, 'workspace.json') }), defaultPath: homedir() });
+const store=new WorkspaceStore({ stateFile: resolve(data, 'workspace.json') });
+const api = createApi({ store, defaultPath: homedir() });
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.mjs': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.wasm': 'application/wasm', '.bcmap': 'application/octet-stream' };
 const server = createServer((request, response) => {
   void api(request, response, async () => {
@@ -38,7 +39,7 @@ function stop() {
   stopping = true;
   stopProcesses();
   server.closeAllConnections();
-  server.close(() => process.exit(0));
+  server.close(() => {void store.close().finally(()=>process.exit(0));});
 }
 process.stdin.resume();
 process.stdin.on('end', stop);

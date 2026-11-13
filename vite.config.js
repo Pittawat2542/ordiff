@@ -30,22 +30,14 @@ export default defineConfig({
     {
       name: "ordiff-local-api",
       configureServer(server) {
-        server.middlewares.use(
-          createApi({
-            store: new WorkspaceStore({
-              stateFile: resolve(".ordiff/workspace.json"),
-            }),
-          }),
-        );
+        const store=new WorkspaceStore({stateFile:resolve(".ordiff/workspace.json")});
+        server.httpServer?.once("close",()=>{void store.close();});
+        server.middlewares.use(createApi({store}));
       },
       configurePreviewServer(server) {
-        server.middlewares.use(
-          createApi({
-            store: new WorkspaceStore({
-              stateFile: resolve(".ordiff/workspace.json"),
-            }),
-          }),
-        );
+        const store=new WorkspaceStore({stateFile:resolve(".ordiff/workspace.json")});
+        server.httpServer?.once("close",()=>{void store.close();});
+        server.middlewares.use(createApi({store}));
       },
     },
   ],

@@ -4,6 +4,7 @@ import type {
   ReviewSection,
   ReviewState,
   ReviewStatus,
+  Workspace,
 } from "./types";
 
 export function createReviewModel(dataset: ReviewDataset) {
@@ -58,7 +59,9 @@ export function createReviewModel(dataset: ReviewDataset) {
         : groups[0]?.id || null;
     const view =
       source.view &&
-      ["behavior", "all", "ungrouped"].includes(source.view) &&
+      ["behavior", "all", "ungrouped", "deferred", "since"].includes(
+        source.view,
+      ) &&
       (source.view !== "behavior" || groups.length)
         ? source.view
         : groups.length
@@ -75,6 +78,9 @@ export function createReviewModel(dataset: ReviewDataset) {
       groupId,
       activeId,
       reviewed,
+      deferred: (source.deferred || []).filter(
+        (id) => sectionById[id] && !reviewed.includes(id),
+      ),
       notes,
       checks,
       theme: candidate.theme === "dark" ? "dark" : "light",
@@ -103,7 +109,7 @@ export function createReviewModel(dataset: ReviewDataset) {
 
   function getVisibleSections(state: ReviewState) {
     let visible =
-      state.query.trim() || state.view === "all"
+      state.query.trim() || ["all", "since", "deferred"].includes(state.view)
         ? sections
         : state.view === "ungrouped"
           ? sections.filter((section) => !section.group)
@@ -133,11 +139,44 @@ export function createReviewModel(dataset: ReviewDataset) {
       visible = visible.filter(
         (section) => !state.reviewed.includes(section.id),
       );
+    if (state.view === "deferred" || state.filter === "deferred")
+      visible = visible.filter((s) => state.deferred?.includes(s.id));
+    if (state.pathFilter)
+      visible = visible.filter((s) => s.path === state.pathFilter);
+    const cycle = (dataset as Workspace).cycle;
+    if (state.changeFilter)
+      visible = visible.filter(
+        (s) =>
+          (cycle?.changes.matches[s.id]?.kind || "added") ===
+          state.changeFilter,
+      );
+    if (state.feedbackOnly)
+      visible = visible.filter((s) =>
+        cycle?.feedback.comments.some(
+          (c) => c.path === s.path && c.status !== "resolved" && c.text.trim(),
+        ),
+      );
+    if (state.view === "since")
+      visible = [...visible].sort(
+        (a, b) =>
+          Number(cycle?.changes.matches[a.id]?.kind === "unchanged") -
+          Number(cycle?.changes.matches[b.id]?.kind === "unchanged"),
+      );
     return visible;
   }
 
   function reduceReview(state: ReviewState, action: ReviewAction): ReviewState {
     switch (action.type) {
+      case "facets":
+        return { ...state, ...action, revisit: true };
+      case "defer":
+        if (!sectionById[action.id]) return state;
+        return {
+          ...state,
+          reviewed: state.reviewed.filter((id) => id !== action.id),
+          deferred: [...new Set([...(state.deferred || []), action.id])],
+          revisit: false,
+        };
       case "group":
         if (!groupById[action.id]) return state;
         return {
@@ -161,7 +200,11 @@ export function createReviewModel(dataset: ReviewDataset) {
         };
       }
       case "view":
-        if (!["all", "ungrouped", "behavior"].includes(action.view))
+        if (
+          !["all", "ungrouped", "behavior", "deferred", "since"].includes(
+            action.view,
+          )
+        )
           return state;
         const visible =
           action.view === "ungrouped"
@@ -180,6 +223,7 @@ export function createReviewModel(dataset: ReviewDataset) {
         if (state.reviewed.includes(action.id) === reviewed) return state;
         return {
           ...state,
+          deferred: (state.deferred || []).filter((id) => id !== action.id),
           reviewed: reviewed
             ? [...state.reviewed, action.id]
             : state.reviewed.filter((id) => id !== action.id),
@@ -232,7 +276,9 @@ export function createReviewModel(dataset: ReviewDataset) {
       case "search":
         return { ...state, query: action.query, revisit: true };
       case "filter":
-        return ["all", "reviewed", "unreviewed"].includes(action.filter)
+        return ["all", "reviewed", "unreviewed", "deferred"].includes(
+          action.filter,
+        )
           ? { ...state, filter: action.filter, revisit: true }
           : state;
       default:

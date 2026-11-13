@@ -20,6 +20,9 @@ export function PromptBuilder({
   const { feedback, workspace, model, state } = review;
   const [paths, setPaths] = useState<Set<string> | null>(null);
   const [includeGeneral, setIncludeGeneral] = useState(true);
+  const [includeResolved, setIncludeResolved] = useState(false);
+  const [handoff, setHandoff] = useState("");
+  const [expandedFiles, setExpandedFiles] = useState(new Set<string>());
   const [message, setMessage] = useState("");
   const [copyFailed, setCopyFailed] = useState(false);
   const previewRef = useRef<HTMLTextAreaElement>(null);
@@ -31,6 +34,7 @@ export function PromptBuilder({
     ? buildPrompt(workspace, feedback.state, {
         paths: selected.map((file) => file.path),
         includeGeneral,
+        includeResolved,
       })
     : "";
   useEffect(() => {
@@ -122,7 +126,17 @@ export function PromptBuilder({
               </Button>
             </div>
           </div>
-          <p className="field-hint">Only files with comments appear here.</p>
+          <p className="field-hint">
+            Open and addressed feedback is included by default.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={includeResolved}
+              onChange={(e) => setIncludeResolved(e.target.checked)}
+            />{" "}
+            Include resolved feedback
+          </label>
           {!feedback.files.length && (
             <p className="prompt-no-files">
               No file comments yet. You can write a general prompt below, or
@@ -153,18 +167,34 @@ export function PromptBuilder({
                     References need rechecking
                   </span>
                 )}
-                <details className="prompt-file-details">
-                  <summary>Edit feedback</summary>
+                <details
+                  className="prompt-file-details"
+                  open={expandedFiles.has(file.path)}
+                >
+                  <summary
+                    onClick={(event) => {
+                      event.preventDefault();
+                      setExpandedFiles((previous) => {
+                        const next = new Set(previous);
+                        if (next.has(file.path)) next.delete(file.path);
+                        else next.add(file.path);
+                        return next;
+                      });
+                    }}
+                  >
+                    Edit feedback
+                  </summary>
                   <div>
-                    {file.comments.map((comment) => (
-                      <CommentEditor
-                        key={comment.id}
-                        comment={comment}
-                        feedback={feedback}
-                        workspace={workspace}
-                        active={model.getActiveSection(state)}
-                      />
-                    ))}
+                    {expandedFiles.has(file.path) &&
+                      file.comments.map((comment) => (
+                        <CommentEditor
+                          key={comment.id}
+                          comment={comment}
+                          feedback={feedback}
+                          workspace={workspace}
+                          active={model.getActiveSection(state)}
+                        />
+                      ))}
                   </div>
                 </details>
               </div>
@@ -183,7 +213,9 @@ export function PromptBuilder({
           </div>
           <p className="feedback-storage-label">
             {feedback.storageAvailable
-              ? "Feedback is autosaved in this browser."
+              ? workspace.cycle
+                ? feedback.saveStatus
+                : "Feedback is autosaved in this browser."
               : "Feedback is available for this session only."}
           </p>
         </section>
@@ -230,7 +262,44 @@ export function PromptBuilder({
             </Button>
           )}
         </div>
+        {handoff && (
+          <Textarea
+            readOnly
+            aria-label="Agent handoff instruction"
+            value={handoff}
+          />
+        )}
         <div className="prompt-export-actions">
+          {workspace.cycle && (
+            <Button
+              variant="secondary"
+              disabled={!prompt || feedback.saveStatus !== "Saved locally"}
+              onClick={() => {
+                void review
+                  .cycleAction<{ id: string }>("batch.publish", {
+                    commentIds: feedback.state.comments
+                      .filter(
+                        (c) =>
+                          selected.some((f) => f.path === c.path) &&
+                          (includeResolved || c.status !== "resolved"),
+                      )
+                      .map((c) => c.id),
+                    includeGeneral,
+                  })
+                  .then((batch) => {
+                    setHandoff(
+                      `Use Ordiff get_feedback_batch with batchId "${batch.id}". Inspect the captured references and current code, apply the requested changes, then report_feedback_outcomes. Leave resolution to me.`,
+                    );
+                    setMessage(
+                      "Batch published. Future comment edits will not change it.",
+                    );
+                  })
+                  .catch((error) => setMessage(error.message));
+              }}
+            >
+              Publish to MCP
+            </Button>
+          )}
           <Button variant="secondary" disabled={!prompt} onClick={download}>
             <Icon name="download" />
             Download Markdown

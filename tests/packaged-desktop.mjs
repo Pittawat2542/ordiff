@@ -16,6 +16,7 @@ test('signed bundle runs Git and MCP using only its own runtime and resources', 
   assert.equal(execFileSync(node, ['--version'], { encoding: 'utf8', timeout: 10000 }).trim(), 'v24.22.2');
   const dir = await mkdtemp(join(tmpdir(), 'ordiff-packaged-'));
   execFileSync('/usr/bin/git', ['-C', dir, 'init', '-q']);
+  await writeFile(join(dir, '.git/info/exclude'), 'state/\n');
   await writeFile(join(dir, 'example.ts'), 'export const desktop = true;\n');
   const child = spawn(node, [join(runtime, 'server/desktop.js')], {
     cwd: dir, env: { PATH: '/usr/bin:/bin', ORDIFF_PORT: '0', ORDIFF_DATA_DIR: join(dir, 'state'), ORDIFF_UI_DIR: join(runtime, 'dist') },

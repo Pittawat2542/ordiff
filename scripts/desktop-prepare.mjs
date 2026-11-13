@@ -58,6 +58,7 @@ await rm(resources, { recursive: true, force: true });
 await mkdir(resources, { recursive: true });
 await cp(join(root, 'dist'), join(resources, 'dist'), { recursive: true });
 await cp(join(root, 'server'), join(resources, 'server'), { recursive: true });
+await cp(join(root, 'shared'), join(resources, 'shared'), { recursive: true });
 await cp(join(deps, 'node_modules'), join(resources, 'node_modules'), { recursive: true });
 await cp(join(nodeDir, 'LICENSE'), join(resources, 'NODE-LICENSE'));
 await writeFile(join(resources, 'package.json'), JSON.stringify({ name: 'ordiff-runtime', private: true, type: 'module' }));

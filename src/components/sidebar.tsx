@@ -168,7 +168,74 @@ export function Sidebar({
             {ungrouped.length}
           </span>
         </Button>
+        <Button
+          variant="unstyled"
+          className={`plain-nav ${state.view === "deferred" ? "selected" : ""}`}
+          onClick={() => navigate({ type: "view", view: "deferred" })}
+        >
+          <Icon name="status" />
+          <span>Needs another look</span>
+          <span className="nav-count">{state.deferred?.length || 0}</span>
+        </Button>
+        {workspace?.cycle?.history.length &&
+        workspace.cycle.history.length > 1 ? (
+          <Button
+            variant="unstyled"
+            className={`plain-nav ${state.view === "since" ? "selected" : ""}`}
+            onClick={() => navigate({ type: "view", view: "since" })}
+          >
+            <Icon name="retry" />
+            <span>Since previous pass</span>
+          </Button>
+        ) : null}
       </nav>
+      <details className="cycle-filters">
+        <summary>Filter changes</summary>
+        <label>
+          File
+          <select
+            value={state.pathFilter || ""}
+            onChange={(e) =>
+              review.dispatch({ type: "facets", pathFilter: e.target.value })
+            }
+          >
+            <option value="">All files</option>
+            {[...new Set(model.sections.map((s) => s.path))].map((path) => (
+              <option key={path}>{path}</option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Changed since previous pass
+          <select
+            value={state.changeFilter || ""}
+            onChange={(e) =>
+              review.dispatch({ type: "facets", changeFilter: e.target.value })
+            }
+          >
+            <option value="">All changes</option>
+            <option value="added">Added</option>
+            <option value="modified">Modified</option>
+            <option value="unchanged">Unchanged</option>
+          </select>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={!!state.feedbackOnly}
+            onChange={(e) =>
+              review.dispatch({
+                type: "facets",
+                feedbackOnly: e.target.checked,
+              })
+            }
+          />{" "}
+          Has unresolved feedback
+        </label>
+        <Button variant="link" onClick={review.clearFilters}>
+          Clear filters
+        </Button>
+      </details>
       <div className="navigation-heading">
         <span>
           {searching
@@ -193,6 +260,7 @@ export function Sidebar({
             }
           >
             <option value="all">All changes</option>
+            <option value="deferred">Needs another look</option>
             <option value="unreviewed">Needs review</option>
             <option value="reviewed">Reviewed</option>
           </select>

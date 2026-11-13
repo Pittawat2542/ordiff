@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
 import { DiffView } from "../diff-view";
 import type { ReviewController } from "../hooks/use-review";
-import type { ReviewAction, ReviewSection } from "../types";
+import type { ReviewAction, ReviewSection, FeedbackAnchor } from "../types";
 import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 
@@ -16,6 +16,7 @@ export function ReviewContent({
   restart,
   addComment,
   buildPrompt,
+  revealAnchor,
 }: {
   review: ReviewController;
   detailsOpen: boolean;
@@ -24,8 +25,9 @@ export function ReviewContent({
   toggleContext: (id: string) => void;
   openRepository: () => void;
   restart: () => void;
-  addComment: (scope: "file" | "section") => void;
+  addComment: (scope: "file" | "section", anchor?: FeedbackAnchor) => void;
   buildPrompt: () => void;
+  revealAnchor?: FeedbackAnchor | null;
 }) {
   const { workspace, model, state, mode } = review;
   const visible = model.getVisibleSections(state);
@@ -62,11 +64,17 @@ export function ReviewContent({
         <p>
           {complete
             ? `${progress.total} sections across ${new Set(model.sections.map((section) => section.path)).size} files, considered one at a time.`
-            : "This repository has no working changes right now."}
+            : "There are no changes in this comparison."}
         </p>
         {complete && (
           <span className="completion-caption">
-            Your review progress is saved. Turn your feedback into the next
+            Your review progress is saved.{" "}
+            {
+              review.feedback.state.comments.filter(
+                (c) => c.text.trim() && c.status !== "resolved",
+              ).length
+            }{" "}
+            feedback items unresolved. Turn your feedback into the next
             iteration.
           </span>
         )}
@@ -139,7 +147,7 @@ export function ReviewContent({
           >
             <summary>
               <Icon name="sparkle" />
-              <span>Context</span>
+              <span>Explanation</span>
               <Icon name="down" />
             </summary>
             <div className="context-body">
@@ -160,9 +168,33 @@ export function ReviewContent({
       {workspace.planStatus === "stale" && (
         <div className="plan-notice">
           <Icon name="sparkle" />
-          <span>The diff changed. Ask your agent for a new review path.</span>
+          <span>
+            Needs updating · The diff changed. Organize behaviors or ask your
+            agent for a new review path.
+          </span>
         </div>
       )}
+      {state.view === "since" && workspace.cycle?.changes.removed.length ? (
+        <details className="plan-notice">
+          <summary>
+            {workspace.cycle.changes.removed.length} removed sections
+          </summary>
+          {workspace.cycle.changes.removed.map((s) => (
+            <p key={s.id}>
+              {s.path} · {s.symbol}
+            </p>
+          ))}
+        </details>
+      ) : null}
+      {active &&
+        workspace.cycle?.changes.matches[active.id]?.kind === "unchanged" &&
+        workspace.cycle.previousDecisions[
+          workspace.cycle.changes.matches[active.id].previousId
+        ]?.status === "reviewed" && (
+          <p className="plan-notice">
+            Previously reviewed · Reconfirm for this pass
+          </p>
+        )}
       {active ? (
         <div className="active-change">
           <DiffView
@@ -171,6 +203,9 @@ export function ReviewContent({
             expanded={expanded.has(active.id)}
             onToggleContext={toggleActiveContext}
             onAddComment={addComment}
+            query={state.query}
+            comments={review.feedback.state.comments}
+            revealAnchor={revealAnchor}
           />
           <ReviewNotes
             review={review}
@@ -263,16 +298,13 @@ function ReviewNotes({
             }
             onChange={(event) => {
               review.feedback.setQuickNote(section, event.target.value);
-              review.dispatch({
-                type: "note",
-                id: section.id,
-                text: event.target.value,
-              });
             }}
           />
           <span className="note-save-label">
             {review.storageAvailable
-              ? "Saved only in this browser."
+              ? review.workspace?.cycle
+                ? review.feedback.saveStatus
+                : "Saved in this browser for the sample."
               : "Available for this session only."}
           </span>
         </div>
@@ -290,6 +322,7 @@ export function ReviewFooter({
   navigate: (action: ReviewAction) => void;
   onContinue: () => void;
 }) {
+  const [deferNote, setDeferNote] = useState("");
   const { model, state } = review;
   const status = model.getReviewStatus(state),
     visible = model.getVisibleSections(state);
@@ -324,10 +357,34 @@ export function ReviewFooter({
               ? `Step ${localIndex + 1} of ${visible.length}`
               : `${localIndex + 1} of ${visible.length} sections`}
           </strong>
-          <span>{reviewed ? "Reviewed" : "Needs review"}</span>
+          <span>
+            {reviewed
+              ? "Reviewed"
+              : state.deferred?.includes(section.id)
+                ? "Deferred"
+                : "Needs review"}
+          </span>
         </span>
       </div>
       <div className="footer-controls">
+        <details className="defer-note">
+          <summary>Defer note</summary>
+          <Textarea
+            aria-label="Reason to revisit"
+            value={deferNote}
+            onChange={(e) => setDeferNote(e.target.value)}
+            maxLength={2000}
+          />
+        </details>
+        <Button
+          variant="link"
+          onClick={() => {
+            review.deferAndContinue(deferNote);
+            setDeferNote("");
+          }}
+        >
+          Defer & next <kbd>D</kbd>
+        </Button>
         {reviewed && (
           <Button
             variant="link"

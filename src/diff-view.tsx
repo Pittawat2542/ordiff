@@ -1,4 +1,4 @@
-import { Fragment, lazy, memo, Suspense, useMemo, useState } from "react";
+import { lazy, memo, Suspense, useState } from "react";
 import {
   fileUrl,
   formatSize,
@@ -6,11 +6,11 @@ import {
   previewKind,
 } from "./lib/file-preview";
 const FilePreview = lazy(() => import("./components/file-preview"));
-import { highlightDiff } from "./lib/highlight";
+import { DiffText } from "./components/diff-text";
 import { Icon, roleIcons } from "./icons";
 import { changeCounts } from "./lib/diff";
 import { Button } from "./components/ui/button";
-import type { DiffSection } from "./types";
+import type { DiffSection, FeedbackAnchor, FeedbackComment } from "./types";
 
 export function ChangeCounts({ sections }: { sections: DiffSection[] }) {
   const count = changeCounts(sections);
@@ -26,7 +26,10 @@ interface DiffViewProps {
   expanded?: boolean;
   onToggleContext?: () => void;
   version?: string;
-  onAddComment?: (scope: "file" | "section") => void;
+  onAddComment?: (scope: "file" | "section", anchor?: FeedbackAnchor) => void;
+  query?: string;
+  comments?: FeedbackComment[];
+  revealAnchor?: FeedbackAnchor | null;
 }
 export const DiffView = memo(function DiffView(props: DiffViewProps) {
   return (
@@ -42,6 +45,9 @@ function DiffPanel({
   onToggleContext,
   version,
   onAddComment,
+  query,
+  comments,
+  revealAnchor,
 }: DiffViewProps) {
   const kind = previewKind(section);
   const canPreview = kind !== "unsupported" || section.binary;
@@ -63,10 +69,6 @@ function DiffPanel({
       : undefined;
   const split = section.path.lastIndexOf("/");
   const allLines = section.lines || [];
-  const lines = allLines
-    .map((line, index) => ({ ...line, index }))
-    .filter((line) => expanded || !line.extra);
-  const highlighted = useMemo(() => highlightDiff(section), [section]);
   return (
     <article className="diff-card" id="active-diff">
       <div className="diff-sticky-header">
@@ -219,47 +221,15 @@ function DiffPanel({
             </p>
           </div>
         ) : (
-          <div
-            className="diff-code"
-            tabIndex={0}
-            role="region"
-            aria-label={`${section.path} code diff`}
-          >
-            {lines.map((line, index) => (
-              <div className={`diff-line ${line.type}`} key={index}>
-                <span className="line-number old">{line.old ?? ""}</span>
-                <span className="line-number new">{line.new ?? ""}</span>
-                <span
-                  className="diff-marker"
-                  aria-label={
-                    line.type === "add"
-                      ? "Added"
-                      : line.type === "remove"
-                        ? "Removed"
-                        : "Unchanged"
-                  }
-                >
-                  {line.type === "add"
-                    ? "+"
-                    : line.type === "remove"
-                      ? "−"
-                      : ""}
-                </span>
-                <code>
-                  {(highlighted[line.index] || [{ text: line.text }]).map(
-                    (token, index) =>
-                      token.className ? (
-                        <span className={token.className} key={index}>
-                          {token.text}
-                        </span>
-                      ) : (
-                        <Fragment key={index}>{token.text}</Fragment>
-                      ),
-                  )}
-                </code>
-              </div>
-            ))}
-          </div>
+          <DiffText
+            section={section}
+            version={version}
+            onAddComment={onAddComment}
+            query={query}
+            expanded={expanded}
+            comments={comments}
+            revealAnchor={revealAnchor}
+          />
         )}
       </div>
       {mode === "diff" && allLines.some((line) => line.extra) && (

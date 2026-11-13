@@ -525,7 +525,7 @@ test("refreshing a changed diff resets old decisions and exposes a stale agent p
     ).toBeInTheDocument(),
   );
   expect(
-    screen.getByText("The diff changed. Ask your agent for a new review path."),
+    screen.getByText("Needs updating · The diff changed. Organize behaviors or ask your agent for a new review path."),
   ).toBeInTheDocument();
 });
 
@@ -571,7 +571,7 @@ test("a revision notification accepts a new agent path without losing progress",
     expect(
       screen.getByRole("heading", { name: "Expose failure" }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Context", { exact: true }));
+    fireEvent.click(screen.getByText("Explanation", { exact: true }));
     expect(screen.getByText("Start with the contract.")).toBeVisible();
     expect(
       screen.getByRole("button", {
@@ -761,14 +761,14 @@ test("all section navigation stays in the sidebar and distinguishes hunks in the
 test("agent context starts collapsed and closes when moving to another section", async () => {
   await sample();
   const context = screen
-    .getByText("Context", { exact: true })
+    .getByText("Explanation", { exact: true })
     .closest("details")!;
   expect(context.open).toBe(false);
-  fireEvent.click(screen.getByText("Context", { exact: true }));
+  fireEvent.click(screen.getByText("Explanation", { exact: true }));
   expect(context.open).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Next step" }));
   expect(
-    screen.getByText("Context", { exact: true }).closest("details"),
+    screen.getByText("Explanation", { exact: true }).closest("details"),
   ).not.toHaveAttribute("open");
 });
 

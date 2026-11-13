@@ -114,7 +114,17 @@ export function reduceFeedback(
       return {
         ...state,
         comments: state.comments.map((item) =>
-          item.id === action.id ? { ...item, ...action.patch } : item,
+          item.id === action.id
+            ? {
+                ...item,
+                ...action.patch,
+                status: Object.keys(action.patch).some((key) =>
+                  ["text", "intent", "anchor", "section"].includes(key),
+                )
+                  ? "open"
+                  : action.patch.status || item.status,
+              }
+            : item,
         ),
       };
     case "remove":
@@ -143,6 +153,7 @@ export function feedbackFiles(state: FeedbackState) {
 export function feedbackStatus(comment: FeedbackComment, workspace: Workspace) {
   if (!workspace.sections.some((section) => section.path === comment.path))
     return "missing-file";
+  if (comment.anchor && comment.anchor.snapshotId !== workspace.version) return "stale-section";
   if (
     comment.section &&
     !workspace.sections.some(

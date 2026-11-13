@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { cycleRequest } from "../lib/cycle-client";
 import * as demo from "../sample-data";
 import { createReviewModel } from "../review";
 import { useFeedback } from "./use-feedback";
@@ -22,6 +23,8 @@ type Session = {
   undo: {
     id: string;
     expiresAt: number;
+    decisionRevision?: number;
+    previousStatus?: "pending" | "reviewed" | "deferred";
     location: Pick<
       ReviewState,
       "view" | "groupId" | "activeId" | "query" | "filter" | "revisit"
@@ -91,7 +94,9 @@ export function useReview() {
   });
   const [storageAvailable, setStorageAvailable] = useState(true);
   const [defaultPath, setDefaultPath] = useState("");
-  const [recentRepositories, setRecentRepositories] = useState<RecentRepository[]>([]);
+  const [recentRepositories, setRecentRepositories] = useState<
+    RecentRepository[]
+  >([]);
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -107,7 +112,7 @@ export function useReview() {
     () => createReviewModel(session.workspace || empty),
     [session.workspace],
   );
-  const feedback = useFeedback(session.workspace, session.review);
+
   const announce = useCallback((message: string) => {
     clearTimeout(toastTimer.current);
     setToast(message);
@@ -129,7 +134,33 @@ export function useReview() {
         const sameDiff =
           previous.workspace?.version === next?.version &&
           previous.workspace?.repo.path === next?.repo.path;
-        let review = nextModel.createReview(sameDiff ? previous.review : saved);
+        const samePass =
+          sameDiff &&
+          previous.workspace?.cycle?.pass.id === next?.cycle?.pass.id;
+        let review = nextModel.createReview(samePass ? previous.review : saved);
+        if (next?.cycle) {
+          const decisions = next.cycle.pass.decisions;
+          review = {
+            ...review,
+            reviewed: Object.keys(decisions).filter(
+              (id) => decisions[id].status === "reviewed",
+            ),
+            deferred: Object.keys(decisions).filter(
+              (id) => decisions[id].status === "deferred",
+            ),
+            checks: next.cycle.pass.checks,
+          };
+          if (samePass)
+            review = {
+              ...review,
+              query: previous.review.query,
+              filter: previous.review.filter,
+              revisit: previous.review.revisit,
+              pathFilter: previous.review.pathFilter,
+              changeFilter: previous.review.changeFilter,
+              feedbackOnly: previous.review.feedbackOnly,
+            };
+        }
         if (
           (fromDemo &&
             (!saved ||
@@ -152,6 +183,111 @@ export function useReview() {
     },
     [],
   );
+  const feedback = useFeedback(
+    session.workspace,
+    session.review,
+    applyWorkspace,
+  );
+  const mutationQueue = useRef(Promise.resolve());
+  async function cycleAction<T = unknown>(
+    action: string,
+    input: Record<string, unknown> = {},
+  ) {
+    const workspace = current.current.workspace;
+    if (!workspace?.cycle) throw new Error("Open a local repository first.");
+    const data = await cycleRequest<T>(workspace, action, input);
+    if (current.current.workspace?.comparisonId === workspace.comparisonId) {
+      revision.current = data.revision;
+      applyWorkspace(data.workspace);
+    }
+    return data.result;
+  }
+  function persistDecision(
+    id: string,
+    status: "pending" | "reviewed" | "deferred",
+    expectedRevision?: number,
+    note = "",
+  ) {
+    const workspace = current.current.workspace;
+    if (!workspace?.cycle) return;
+    const passId = workspace.cycle.pass.id;
+    const expected =
+      expectedRevision ?? workspace.cycle.pass.decisions[id]?.revision ?? 0;
+    mutationQueue.current = mutationQueue.current
+      .then(async () => {
+        const latest = current.current.workspace;
+        if (latest?.cycle?.pass.id !== passId)
+          throw new Error(
+            "The review pass changed. Please repeat your decision.",
+          );
+        await cycleAction("decision", {
+          passId,
+          sectionId: id,
+          status,
+          expectedRevision: expected,
+          note,
+        });
+      })
+      .catch(async (error) => {
+        announce(messageOf(error));
+        try {
+          const data = await api("workspace");
+          applyWorkspace(data.workspace);
+        } catch {
+          /* reconnect will restore server state */
+        }
+      });
+  }
+  function deferAndContinue(note = "") {
+    const id = current.current.review.activeId;
+    if (!id) return;
+    persistDecision(id, "deferred", undefined, note);
+    setSession((previous) => {
+      const nextModel = createReviewModel(previous.workspace || empty);
+      let review = nextModel.reduceReview(previous.review, {
+        type: "defer",
+        id,
+      });
+      const next = nextModel.sections.find(
+        (s) =>
+          s.id !== id &&
+          !review.reviewed.includes(s.id) &&
+          !review.deferred?.includes(s.id),
+      );
+      if (next)
+        review = nextModel.reduceReview(
+          { ...review, view: "all" },
+          { type: "section", id: next.id },
+        );
+      else
+        review = {
+          ...review,
+          view: "deferred",
+          activeId: review.deferred?.[0] || id,
+        };
+      return {
+        ...previous,
+        review,
+        undo: {
+          id,
+          expiresAt: Date.now() + 6000,
+          decisionRevision:
+            (previous.workspace?.cycle?.pass.decisions[id]?.revision || 0) + 1,
+          previousStatus: previous.review.reviewed.includes(id)
+            ? "reviewed"
+            : "pending",
+          location: {
+            view: previous.review.view,
+            groupId: previous.review.groupId,
+            activeId: previous.review.activeId,
+            query: previous.review.query,
+            filter: previous.review.filter,
+            revisit: previous.review.revisit,
+          },
+        },
+      };
+    });
+  }
   useEffect(() => {
     if (!session.undo) return;
     const record = session.undo;
@@ -178,14 +314,19 @@ export function useReview() {
     }
   }, [session, theme]);
   useEffect(() => {
-    let active = true, pending = false, dirty = false;
+    let active = true,
+      pending = false,
+      dirty = false;
     let stream: EventSource | undefined;
     let abort = new AbortController();
     let retry: ReturnType<typeof setTimeout> | undefined;
     let delay = 1000;
     async function load(incremental = false) {
       if (!active || isPageHidden() || current.current.mode === "demo") return;
-      if (pending) { dirty = true; return; }
+      if (pending) {
+        dirty = true;
+        return;
+      }
       if (busyRef.current) return;
       pending = true;
       const started = generation.current;
@@ -201,7 +342,8 @@ export function useReview() {
         if (data.defaultPath) setDefaultPath(data.defaultPath);
         if (data.mcpConfig) setMcpConfig(data.mcpConfig);
         if (started !== generation.current) return;
-        if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+        if (data.recentRepositories)
+          setRecentRepositories(data.recentRepositories);
         setServiceError("");
         if (data.unchanged) return;
         revision.current = data.revision;
@@ -219,35 +361,63 @@ export function useReview() {
           applyWorkspace(data.workspace);
         }
       } catch (error) {
-        if (active && !signal.aborted && started === generation.current && !incremental)
+        if (
+          active &&
+          !signal.aborted &&
+          started === generation.current &&
+          !incremental
+        )
           setServiceError(messageOf(error));
       } finally {
         pending = false;
-        if (dirty && active && !isPageHidden()) { dirty = false; void load(true); }
+        if (dirty && active && !isPageHidden()) {
+          dirty = false;
+          void load(true);
+        }
       }
     }
     function connect() {
-      if (!active || isPageHidden() || stream || busyRef.current || current.current.mode === "demo") return;
-      stream = new EventSource('/api/events');
-      stream.onmessage = event => {
+      if (
+        !active ||
+        isPageHidden() ||
+        stream ||
+        busyRef.current ||
+        current.current.mode === "demo"
+      )
+        return;
+      stream = new EventSource("/api/events");
+      stream.onmessage = (event) => {
         delay = 1000;
         try {
           const next = JSON.parse(event.data);
-          if (Number.isInteger(next.revision) && next.revision !== revision.current) void load(true);
-        } catch { /* A reconnect always resynchronizes the workspace. */ }
+          if (
+            Number.isInteger(next.revision) &&
+            next.revision !== revision.current
+          )
+            void load(true);
+        } catch {
+          /* A reconnect always resynchronizes the workspace. */
+        }
       };
       stream.onerror = () => {
         stream?.close();
         stream = undefined;
         if (active && !isPageHidden()) {
-          retry = setTimeout(() => { connect(); void load(); }, delay);
+          retry = setTimeout(() => {
+            connect();
+            void load();
+          }, delay);
           delay = Math.min(delay * 2, 60000);
         }
       };
     }
     function synchronize(resync = false) {
       clearTimeout(retry);
-      if (isPageHidden() || busyRef.current || current.current.mode === "demo") {
+      if (
+        isPageHidden() ||
+        busyRef.current ||
+        current.current.mode === "demo"
+      ) {
         stream?.close();
         stream = undefined;
         if (isPageHidden() || current.current.mode === "demo") {
@@ -262,20 +432,34 @@ export function useReview() {
     const visibilityChanged = () => synchronize(true);
     syncConnection.current = () => synchronize();
     visibilityChanged();
-    document.addEventListener('visibilitychange', visibilityChanged);
-    window.addEventListener('ordiff:visibility', visibilityChanged);
+    document.addEventListener("visibilitychange", visibilityChanged);
+    window.addEventListener("ordiff:visibility", visibilityChanged);
     return () => {
       active = false;
       abort.abort();
       stream?.close();
       clearTimeout(retry);
-      document.removeEventListener('visibilitychange', visibilityChanged);
-      window.removeEventListener('ordiff:visibility', visibilityChanged);
+      document.removeEventListener("visibilitychange", visibilityChanged);
+      window.removeEventListener("ordiff:visibility", visibilityChanged);
       syncConnection.current = () => {};
     };
   }, [announce, applyWorkspace]);
-  useEffect(() => { syncConnection.current(); }, [session.mode, busy]);
+  useEffect(() => {
+    syncConnection.current();
+  }, [session.mode, busy]);
   function dispatch(action: ReviewAction) {
+    if (action.type === "set-reviewed")
+      persistDecision(action.id, action.reviewed ? "reviewed" : "pending");
+    if (action.type === "defer") persistDecision(action.id, "deferred");
+    if (action.type === "check" && current.current.workspace?.cycle) {
+      const next = model.reduceReview(current.current.review, action);
+      void cycleAction("checks", {
+        passId: current.current.workspace.cycle.pass.id,
+        checks: next.checks,
+        expectedRevision:
+          current.current.workspace.cycle.pass.checksRevision || 0,
+      }).catch((error) => announce(messageOf(error)));
+    }
     setSession((previous) => {
       const nextModel = createReviewModel(previous.workspace || empty);
       return {
@@ -289,6 +473,9 @@ export function useReview() {
     });
   }
   function markAndContinue() {
+    const id = current.current.review.activeId;
+    if (id && !current.current.review.reviewed.includes(id))
+      persistDecision(id, "reviewed");
     setSession((previous) => {
       const nextModel = createReviewModel(previous.workspace || empty);
       const section = nextModel.getActiveSection(previous.review);
@@ -310,7 +497,13 @@ export function useReview() {
         const nextId = [
           ...order.slice(position + 1),
           ...order.slice(0, position),
-        ].find((id) => !review.reviewed.includes(id));
+        ]
+          .filter((id) => !review.reviewed.includes(id))
+          .sort(
+            (a, b) =>
+              Number(review.deferred?.includes(a)) -
+              Number(review.deferred?.includes(b)),
+          )[0];
         if (nextId) {
           const nextSection = nextModel.sectionById[nextId];
           if (review.view === "behavior" && !nextSection.group)
@@ -345,12 +538,24 @@ export function useReview() {
           : {
               id: section.id,
               expiresAt: Date.now() + 6000,
+              decisionRevision:
+                (previous.workspace?.cycle?.pass.decisions[section.id]
+                  ?.revision || 0) + 1,
+              previousStatus: previous.review.deferred?.includes(section.id)
+                ? "deferred"
+                : "pending",
               location: { view, groupId, activeId, query, filter, revisit },
             },
       };
     });
   }
   function undoLastMark() {
+    if (current.current.undo)
+      persistDecision(
+        current.current.undo.id,
+        current.current.undo.previousStatus || "pending",
+        current.current.undo.decisionRevision,
+      );
     setSession((previous) => {
       if (!previous.undo || previous.undo.expiresAt <= Date.now())
         return { ...previous, undo: null };
@@ -360,6 +565,17 @@ export function useReview() {
         id: previous.undo.id,
         reviewed: false,
       });
+      if (previous.undo.previousStatus === "deferred")
+        review = nextModel.reduceReview(review, {
+          type: "defer",
+          id: previous.undo.id,
+        });
+      if (previous.undo.previousStatus === "reviewed")
+        review = nextModel.reduceReview(review, {
+          type: "set-reviewed",
+          id: previous.undo.id,
+          reviewed: true,
+        });
       review = { ...review, ...previous.undo.location };
       const section = nextModel.sectionById[previous.undo.id];
       if (
@@ -397,7 +613,8 @@ export function useReview() {
     try {
       const data = await api("repository", { path: path.trim() });
       revision.current = data.revision;
-      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+      if (data.recentRepositories)
+        setRecentRepositories(data.recentRepositories);
       applyWorkspace(data.workspace);
       return true;
     } finally {
@@ -413,7 +630,8 @@ export function useReview() {
     try {
       const data = await api("recent-repositories/remove", { path });
       revision.current = data.revision;
-      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+      if (data.recentRepositories)
+        setRecentRepositories(data.recentRepositories);
       return true;
     } finally {
       busyRef.current = false;
@@ -434,7 +652,8 @@ export function useReview() {
     try {
       const data = await api("refresh", {});
       revision.current = data.revision;
-      if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+      if (data.recentRepositories)
+        setRecentRepositories(data.recentRepositories);
       const changed =
         current.current.workspace?.version !== data.workspace?.version;
       applyWorkspace(data.workspace);
@@ -459,7 +678,8 @@ export function useReview() {
       if (session.mode === "git") {
         const data = await api("disconnect", {});
         revision.current = data.revision;
-        if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+        if (data.recentRepositories)
+          setRecentRepositories(data.recentRepositories);
       }
       applyWorkspace(null);
       return true;
@@ -513,6 +733,12 @@ export function useReview() {
     });
   }
   function restart() {
+    if (current.current.workspace?.cycle) {
+      void cycleAction("pass.restart").catch((error) =>
+        announce(messageOf(error)),
+      );
+      return;
+    }
     setSession((previous) => ({
       ...previous,
       undo: null,
@@ -527,7 +753,14 @@ export function useReview() {
         review: normalize(
           nextModel,
           nextModel.reduceReview(
-            { ...previous.review, query: "", filter: "all" },
+            {
+              ...previous.review,
+              query: "",
+              filter: "all",
+              pathFilter: "",
+              changeFilter: "",
+              feedbackOnly: false,
+            },
             { type: "view", view: "all" },
           ),
         ),
@@ -552,6 +785,9 @@ export function useReview() {
     announce,
     dispatch,
     markAndContinue,
+    deferAndContinue,
+    cycleAction,
+    applyWorkspace,
     canUndo: !!session.undo,
     undoLastMark,
     connectRepository,

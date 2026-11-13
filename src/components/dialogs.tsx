@@ -226,6 +226,8 @@ export function AppDialog({
                   <kbd>R</kbd>
                 </div>
                 <div>
+                  <span>Defer and continue</span><kbd>D</kbd>
+                </div><div>
                   <span>Open help</span>
                   <kbd>?</kbd>
                 </div>
@@ -234,7 +236,7 @@ export function AppDialog({
                 <strong>Your repository stays yours.</strong>
                 <p>
                   Git access is read-only. Use Refresh to pick up file edits.
-                  Review progress and feedback stay in this browser; your repo
+                  Review progress and feedback stay on this computer; your repo
                   choice and agent plan stay locally in Ordiff.
                 </p>
               </div>

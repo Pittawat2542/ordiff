@@ -5,7 +5,7 @@ export function runFile(file, args, options) {
   return new Promise((resolve, reject) => {
     const child = execFile(file, args, options, (error, stdout, stderr) => {
       children.delete(child);
-      if (error) reject(error); else resolve({ stdout, stderr });
+      if (error) { error.stdout = stdout; error.stderr = stderr; reject(error); } else resolve({ stdout, stderr });
     });
     children.add(child);
   });

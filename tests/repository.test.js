@@ -164,7 +164,7 @@ test('recent repositories deduplicate repository roots and exclude failed connec
   assert.equal(store.snapshot().repo.path, first);
 });
 
-test('restoring ignores stale and invalid saved plans while keeping the current repository', async t => {
+test('restoring preserves the active durable pass despite stale legacy plans and newer working edits', async t => {
   const path = await fixture(t);
   await writeFile(join(path, 'pipeline/run.ts'), 'export const status = "failed";\n');
   const stateFile = join(path, '.ordiff/workspace.json');
@@ -178,17 +178,18 @@ test('restoring ignores stale and invalid saved plans while keeping the current 
   const invalid = new WorkspaceStore({ stateFile });
   await invalid.restore();
   assert.equal(invalid.snapshot().repo.path, path);
-  assert.equal(invalid.snapshot().planStatus, 'none');
-  assert.deepEqual(invalid.snapshot().groups, []);
+  assert.equal(invalid.snapshot().planStatus, 'current');
+  assert.equal(invalid.snapshot().groups[0].title, 'Failure state');
 
   await writeFile(stateFile, JSON.stringify(saved));
   await writeFile(join(path, 'pipeline/run.ts'), 'export const status = "completed";\n');
   const stale = new WorkspaceStore({ stateFile });
   await stale.restore();
-  assert.notEqual(stale.snapshot().version, snapshot.version);
-  assert.equal(stale.snapshot().planStatus, 'none');
-  assert.deepEqual(stale.snapshot().groups, []);
-  assert.ok(stale.snapshot().sections[0].lines.some(line => line.type === 'add' && line.text.includes('completed')));
+  assert.equal(stale.snapshot().version, snapshot.version);
+  assert.notEqual(stale.snapshot().cycle.latestSnapshotId,snapshot.version);
+  assert.equal(stale.snapshot().planStatus, 'current');
+  assert.equal(stale.snapshot().groups[0].title,'Failure state');
+  assert.ok(stale.snapshot().sections[0].lines.some(line => line.type === 'add' && line.text.includes('failed')));
 });
 
 test('recent history keeps ten entries and survives disconnect and restart', async t => {

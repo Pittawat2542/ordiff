@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useId, useState } from "react";
 import type { ReviewController } from "../hooks/use-review";
 import type { FeedbackController } from "../hooks/use-feedback";
 import {
@@ -57,6 +57,19 @@ export function CommentEditor({
             </option>
           ))}
         </select>
+        <select
+          aria-label="Comment status"
+          value={comment.status || "open"}
+          onChange={(event) =>
+            feedback.update(comment.id, {
+              status: event.target.value as "open" | "addressed" | "resolved",
+            })
+          }
+        >
+          <option value="open">Open</option>
+          <option value="addressed">Addressed</option>
+          <option value="resolved">Resolved</option>
+        </select>
         <span className="comment-scope">
           {comment.section ? "Section" : "Whole file"}
         </span>
@@ -69,6 +82,39 @@ export function CommentEditor({
           <Icon name="trash" />
         </Button>
       </div>
+      {comment.anchor && status === "current" && (
+        <Button
+          variant="link"
+          onClick={() =>
+            window.dispatchEvent(
+              new CustomEvent("ordiff:reveal-anchor", {
+                detail: comment.anchor,
+              }),
+            )
+          }
+        >
+          View referenced code
+        </Button>
+      )}
+      {comment.anchor && (
+        <details className="comment-reference" open>
+          <summary>
+            Captured {comment.anchor.side} L{comment.anchor.startLine}–
+            {comment.anchor.endLine}
+          </summary>
+          <pre>{comment.anchor.quote}</pre>
+        </details>
+      )}
+      {workspace.cycle?.reports
+        .filter((r) => r.commentId === comment.id)
+        .map((r) => (
+          <p key={r.id} className="field-hint">
+            Agent: {r.explanation}
+            {r.commentRevision !== comment.revision
+              ? " · Earlier comment revision"
+              : ""}
+          </p>
+        ))}
       {comment.section && (
         <div className="comment-reference">
           <span>{comment.section.hunk}</span>
@@ -94,7 +140,7 @@ export function CommentEditor({
                   variant="link"
                   onClick={() =>
                     feedback.update(comment.id, {
-                      section: captureSection(active, workspace.version),
+                      section: captureSection(active, workspace.version),anchor:undefined,
                     })
                   }
                 >
@@ -104,7 +150,7 @@ export function CommentEditor({
               <Button
                 variant="link"
                 onClick={() =>
-                  feedback.update(comment.id, { section: undefined })
+                  feedback.update(comment.id, { section: undefined,anchor:undefined })
                 }
               >
                 Make file comment
@@ -128,6 +174,7 @@ export function CommentEditor({
               ? "Context for your agent…"
               : "What would you like to change?"
         }
+        onBlur={() => void feedback.flush()}
         onChange={(event) =>
           feedback.update(comment.id, { text: event.target.value })
         }
@@ -180,9 +227,13 @@ export function FeedbackPanel({
 }) {
   const { feedback, workspace, model, state } = review;
   const id = useId();
+  const [statusFilter, setStatusFilter] = useState("all"),
+    [commentLimit, setCommentLimit] = useState(100);
   const active = model.getActiveSection(state);
   const comments = feedback.state.comments.filter(
-    (comment) => comment.path === active?.path,
+    (comment) =>
+      comment.path === active?.path &&
+      (statusFilter === "all" || (comment.status || "open") === statusFilter),
   );
   if (!workspace) return null;
   return (
@@ -199,6 +250,34 @@ export function FeedbackPanel({
           <Icon name="close" />
         </Button>
       </header>
+      <div className="cycle-save">
+        <span role="status">{feedback.saveStatus}</span>
+        {feedback.conflict && (
+          <>
+            <Button variant="link" onClick={() => void feedback.flush()}>
+              Retry
+            </Button>
+            <Button variant="link" onClick={feedback.useLatest}>
+              Use latest
+            </Button>
+            <Button variant="link" onClick={feedback.saveAsCopies}>
+              Save as new comments
+            </Button>
+          </>
+        )}
+      </div>
+      <label className="cycle-filter">
+        Feedback status
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+        >
+          <option value="all">All</option>
+          <option value="open">Open</option>
+          <option value="addressed">Addressed — verify</option>
+          <option value="resolved">Resolved</option>
+        </select>
+      </label>
       <div className="feedback-tabs" role="tablist" aria-label="Feedback scope">
         {(["file", "general"] as const).map((value) => (
           <Button
@@ -265,7 +344,7 @@ export function FeedbackPanel({
                 </p>
               </div>
             )}
-            {comments.map((comment) => (
+            {comments.slice(0, commentLimit).map((comment) => (
               <CommentEditor
                 key={comment.id}
                 comment={comment}
@@ -287,10 +366,20 @@ export function FeedbackPanel({
           </div>
         )}
       </div>
+      {comments.length > commentLimit && (
+        <Button
+          variant="link"
+          onClick={() => setCommentLimit(commentLimit + 100)}
+        >
+          Show more comments
+        </Button>
+      )}
       <footer className="feedback-panel-footer">
         <span>
           {feedback.storageAvailable
-            ? "Autosaved in this browser"
+            ? workspace.cycle
+              ? feedback.saveStatus
+              : "Autosaved in this browser"
             : "Available for this session only"}
         </span>
         <Button variant="secondary" onClick={buildPrompt}>

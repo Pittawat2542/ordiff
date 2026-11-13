@@ -1,3 +1,5 @@
+import { CycleToolbar } from "./components/cycle-toolbar";
+import "./cycle.css";
 import {
   lazy,
   Suspense,
@@ -21,7 +23,7 @@ import { FeedbackPanel } from "./components/feedback-panel";
 import { PromptBuilder } from "./components/prompt-builder";
 import { Toolbar } from "./components/toolbar";
 import { FeedbackRail } from "./components/feedback-rail";
-import type { ReviewAction } from "./types";
+import type { ReviewAction, FeedbackAnchor } from "./types";
 
 const TextDiff = lazy(() => import("./tools/text-diff"));
 
@@ -58,6 +60,7 @@ function ReviewWorkspace() {
     () => matchMedia("(max-width: 1023px)").matches,
   );
   const [focusSearch, setFocusSearch] = useState(false);
+  const [revealAnchor, setRevealAnchor] = useState<FeedbackAnchor | null>(null);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [expanded, setExpanded] = useState(new Set<string>());
   const toggleContext = useCallback((id: string) => {
@@ -83,6 +86,27 @@ function ReviewWorkspace() {
     setCommentFocusId(null);
     setFeedbackTab("file");
   }, [workspace?.repo.path]);
+  useEffect(() => {
+    const reveal = (event: Event) => {
+      const anchor = (event as CustomEvent<FeedbackAnchor>).detail;
+      if (!anchor) return;
+      const target =
+        model.sections.find((s) => s.id === anchor.sectionId) ||
+        model.sections.find(
+          (s) =>
+            workspace?.cycle?.changes.matches[s.id]?.previousId ===
+            anchor.sectionId,
+        ) ||
+        model.sections.find((s) => s.path === anchor.path);
+      if (!target) return;
+      review.dispatch({ type: "view", view: "all" });
+      review.dispatch({ type: "section", id: target.id });
+      setRevealAnchor({ ...anchor });
+      setFeedbackOpen(false);
+    };
+    window.addEventListener("ordiff:reveal-anchor", reveal);
+    return () => window.removeEventListener("ordiff:reveal-anchor", reveal);
+  }, [workspace, model]);
   function buildPrompt() {
     setOverflowOpen(false);
     setDialog(null);
@@ -90,10 +114,10 @@ function ReviewWorkspace() {
     if (!wide) setFeedbackOpen(false);
     setPromptOpen(true);
   }
-  function addComment(scope: "file" | "section") {
+  function addComment(scope: "file" | "section", anchor?: FeedbackAnchor) {
     const active = model.getActiveSection(state);
     if (!active) return;
-    setCommentFocusId(review.feedback.add(active, scope));
+    setCommentFocusId(review.feedback.add(active, scope, anchor));
     setFeedbackTab("file");
     setFeedbackOpen(true);
     setDialog(null);
@@ -120,10 +144,31 @@ function ReviewWorkspace() {
     setDetailsOpen(false);
     setExpanded(new Set());
   }, [workspace?.repo.path, workspace?.version]);
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
-    setDetailsOpen(false);
-  }, [state.activeId, state.view, workspace?.version]);
+  useLayoutEffect(() => {
+    const key = `ordiff.position.${workspace?.comparisonId || workspace?.repo.path}.${workspace?.version}.${state.activeId}`;
+    const container = scrollRef.current;
+    if (!container) return;
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(key) || "null");
+      container.scrollTop = saved?.top || 0;
+      container.scrollLeft = saved?.left || 0;
+    } catch {
+      container.scrollTop = 0;
+    }
+    return () => {
+      try {
+        sessionStorage.setItem(
+          key,
+          JSON.stringify({
+            top: container.scrollTop,
+            left: container.scrollLeft,
+          }),
+        );
+      } catch {
+        /* session-only navigation */
+      }
+    };
+  }, [state.activeId, workspace?.version, workspace?.comparisonId]);
   useEffect(() => {
     if (focusSearch) {
       searchRef.current?.focus();
@@ -145,7 +190,6 @@ function ReviewWorkspace() {
   function navigate(action: ReviewAction) {
     closeDialogs();
     review.dispatch(action);
-    if (scrollRef.current) scrollRef.current.scrollTop = 0;
   }
   function restart() {
     review.restart();
@@ -196,6 +240,11 @@ function ReviewWorkspace() {
         (model.getReviewStatus(state) !== "reviewing" && !state.revisit)
       )
         return;
+      if (event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        review.deferAndContinue();
+        return;
+      }
       if (event.key.toLowerCase() === "r") {
         event.preventDefault();
         if (!event.repeat) continueReview();
@@ -251,32 +300,36 @@ function ReviewWorkspace() {
       >
         {!mobile && sidebar}
         <main className="workspace">
-          <Toolbar
-            review={review}
-            navOpen={navOpen}
-            feedbackOpen={feedbackOpen}
-            wide={wide}
-            overflowOpen={overflowOpen}
-            setOverflowOpen={setOverflowOpen}
-            openNavigation={() => {
-              setOverflowOpen(false);
-              setFeedbackOpen(false);
-              setNavOpen(true);
-            }}
-            toggleFeedback={() => {
-              setOverflowOpen(false);
-              setDialog(null);
-              setNavOpen(false);
-              setFeedbackOpen((value) => !value);
-            }}
-            buildPrompt={buildPrompt}
-            openDialog={openDialog}
-          />
+          <div className="workspace-header">
+            <Toolbar
+              review={review}
+              navOpen={navOpen}
+              feedbackOpen={feedbackOpen}
+              wide={wide}
+              overflowOpen={overflowOpen}
+              setOverflowOpen={setOverflowOpen}
+              openNavigation={() => {
+                setOverflowOpen(false);
+                setFeedbackOpen(false);
+                setNavOpen(true);
+              }}
+              toggleFeedback={() => {
+                setOverflowOpen(false);
+                setDialog(null);
+                setNavOpen(false);
+                setFeedbackOpen((value) => !value);
+              }}
+              buildPrompt={buildPrompt}
+              openDialog={openDialog}
+            />
+            {workspace && <CycleToolbar review={review} />}
+          </div>
           <div className="review-scroll" ref={scrollRef}>
             <div id="review-content" tabIndex={-1}>
               {workspace ? (
                 <ReviewContent
                   review={review}
+                  revealAnchor={revealAnchor}
                   detailsOpen={detailsOpen}
                   setDetailsOpen={setDetailsOpen}
                   expanded={expanded}

@@ -91,16 +91,16 @@ test('workspace events report revisions without rescanning Git and reject cross-
   assert.match(response.headers.get('content-type'), /text\/event-stream/);
   const reader = response.body.getReader();
   const read = async () => new TextDecoder().decode((await reader.read()).value);
-  assert.match(await read(), /data: \{"revision":0\}/);
+  assert.match(await read(), /data: \{"revision":0,/);
   await post('/api/repository', { path });
-  assert.match(await read(), /data: \{"revision":1\}/);
+  assert.match(await read(), /data: \{"revision":1,/);
   // A notification subscription must not make subsequent filesystem edits visible.
   await writeFile(join(path, 'extra.ts'), 'export const extra = true;\n');
   const snapshot = await (await fetch(url + '/api/workspace')).json();
   assert.equal(snapshot.revision, 1);
   assert.equal(snapshot.workspace.sections.length, 1);
   await post('/api/refresh');
-  assert.match(await read(), /data: \{"revision":2\}/);
+  assert.match(await read(), /data: \{"revision":2,/);
   assert.equal((await fetch(url + '/api/events', { headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403);
 });
 
@@ -126,7 +126,7 @@ test('a real MCP stdio client can discover tools, read Git hunks, and send a pla
   await rpc('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'ordiff-test', version: '1' } });
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const tools = await rpc('tools/list');
-  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['get_review_context', 'submit_review_plan']);
+  assert.deepEqual(tools.tools.map(tool => tool.name).sort(), ['get_feedback_batch', 'get_review_context', 'list_feedback_batches', 'report_feedback_outcomes', 'submit_review_plan']);
   const metadata = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: {} })).content[0].text);
   assert.equal(metadata.repo, store.snapshot().repo.path);
   assert.equal(metadata.groups, undefined);
@@ -147,8 +147,19 @@ test('a real MCP stdio client can discover tools, read Git hunks, and send a pla
     groups: [{ title: 'Expose failure', description: 'Follow the contract.', sections: [context.sections[0].id], explanations: { [context.sections[0].id]: 'Start here.' } }],
   } });
   assert.equal(detailed.isError, undefined);
-  assert.equal(store.snapshot().groups[0].explanations[context.sections[0].id], 'Start here.');
-  const withPlan = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: { includePlan: true } })).content[0].text);
+  const proposal=JSON.parse(detailed.content[0].text);
+  assert.equal(proposal.status,'pending-human-acceptance');
+  assert.equal(store.snapshot().groups[0].explanations[context.sections[0].id], undefined);
+  const comment=await store.cycleAction('comment.create',{path:'run.ts',text:'Handle cancellation.',intent:'change',clientMutationId:'mcp-comment'});
+  const batch=await store.cycleAction('batch.publish',{commentIds:[comment.id],clientMutationId:'mcp-publish'});
+  const published=JSON.parse((await rpc('tools/call',{name:'get_feedback_batch',arguments:{batchId:batch.id}})).content[0].text);
+  assert.equal(published.comments[0].text,'Handle cancellation.');
+  await rpc('tools/call',{name:'report_feedback_outcomes',arguments:{batchId:batch.id,snapshotId:context.version,clientMutationId:'mcp-report',outcomes:[{commentId:comment.id,outcome:'addressed',explanation:'Handled cancellation.'}]}});
+  assert.equal(store.snapshot().cycle.feedback.comments[0].status,'addressed');
+  await writeFile(join(path,'run.ts'),'export const status = "updated";\n');
+  const fresh=JSON.parse((await rpc('tools/call',{name:'get_review_context',arguments:{}})).content[0].text);
+  assert.notEqual(fresh.version,context.version);assert.equal(store.snapshot().version,context.version);
+  const withPlan = JSON.parse((await rpc('tools/call', { name: 'get_review_context', arguments: { includePlan: true, snapshotId:context.version } })).content[0].text);
   assert.equal(withPlan.groups[0].title, 'Expose failure');
   for (const sections of [['missing'], [context.sections[0].id, context.sections[0].id]]) {
     const rejected = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: context.version, groups: [{ title: 'Invalid', sections }] } });
