@@ -1,6 +1,6 @@
 # Connect an agent to Ordiff
 
-Ordiff's local MCP stdio server lets an agent read the same Git diff shown in the app and propose an ordered review path. It uses the official MCP TypeScript SDK. Human review decisions remain in the interface.
+Ordiff's local MCP stdio server lets an agent capture a fresh snapshot independently of the diff displayed in the app and propose an ordered review path. It uses the official MCP TypeScript SDK. Human review decisions remain in the interface.
 
 ## Setup
 
@@ -35,57 +35,60 @@ Client configuration formats differ; use these command, arguments, and environme
 
 ### `get_review_context`
 
-Returns the selected repository path, current diff version, and changed sections with IDs, paths, and hunk headers. Binary sections additionally carry `binary: true`. It refreshes Git before responding. Existing plans and diff lines are omitted by default.
+Captures fresh local Git contents without activating a human review pass. Returns `repositoryId`, `comparisonId`, `snapshotId`, the compatible `version` alias, resolved revisions, visible snapshot ID, and section metadata. Pass `snapshotId` on subsequent calls to read the exact captured snapshot. The active review, progress, scroll position, and drafts remain unchanged.
 
-- Set `includePlan: true` to include `planStatus` and existing groups in the compact plan format.
-
-- `includeDiff` defaults to `false`; set it to `true` to include code lines.
-- Optionally pass up to 100 `sectionIds` to read a smaller set of hunks. Unknown or stale IDs are rejected.
-- Results larger than 2 MiB are rejected rather than silently truncated. Read metadata first, then request smaller sets of sections.
-- Binary sections include a description, not their file bytes. The app's local viewers provide original/working previews and downloads.
+`includeDiff` and `includePlan` default to false. Pass up to 100 `sectionIds` to retrieve a subset. Responses are bounded to 2 MiB: read metadata first and request fewer sections if needed. Binary sections contain descriptions, not bytes. Retained source has a renewable 30-minute capture lease; historical payloads may later be evicted.
 
 ### `submit_review_plan`
 
-Accepts the current `version` and a `groups` array. Each group requires only a `title` and ordered `sections` containing existing section IDs:
+Pass the captured `version` and ordered groups:
 
 ```json
 {
-  "version": "<version from get_review_context>",
-  "groups": [
-    {
-      "title": "Prevent empty tasks",
-      "sections": ["<api-section-id>", "<ui-section-id>", "<test-section-id>"]
-    }
-  ]
+  "version": "<captured snapshot ID>",
+  "groups": [{
+    "title": "Prevent empty tasks",
+    "description": "Validation and its consumers",
+    "sections": ["<section ID>"],
+    "explanations": {"<section ID>": "Check the empty input path."}
+  }]
 }
 ```
 
-Optionally add a `description` to a group and an `explanations` object keyed by that group's section IDs. Omit these when they add no useful context. Ordiff generates group IDs internally.
+Groups contain 1–500 section references; there may be 1–100 groups. Titles are limited to 160 characters, descriptions to 1,000, explanations to 2,000. Explanations must reference sections in their group. IDs are validated against the captured snapshot, without refreshing Git. Identical submissions are idempotent.
 
-Plans contain 1–100 groups, each with 1–500 sections. Titles must be nonblank and at most 160 characters; optional descriptions are limited to 1,000 characters and explanations to 2,000 characters each. A group cannot repeat a section. Explanations must reference sections in the same group.
+A plan applies immediately only when it targets the visible snapshot and no plan exists. Otherwise it becomes a proposal for human preview and acceptance. Replacement plans retain review decisions, comments, and previous plan revisions. Sections can appear in multiple groups but count once; uncovered sections remain visible. Agents cannot accept proposals or mark sections reviewed.
 
-MCP uses JSON tool arguments validated by JSON Schema. Keep descriptive keys and omit redundant data; no custom serialization is needed. Agents that already know the changes can request metadata first and fetch diff lines only for sections they need to inspect.
+### `list_feedback_batches`
 
-This replaces the previous MCP input containing group `id` and `steps` fields. Reconnect your MCP client to refresh its tool schema. The app's internal HTTP and persisted plan formats remain unchanged.
+Lists published, non-revoked batch metadata for the selected comparison. Unpublished comments and draft text are not exposed.
 
-The app picks up the submitted plan automatically. Sections outside all groups stay visible as **Ungrouped changes**. A section may be referenced by several behaviors; its review progress is counted once overall.
+### `get_feedback_batch`
 
-The backend reads Git again before accepting a plan. A version mismatch or unknown section ID rejects the submission. Refreshing a changed diff removes stale grouping and starts fresh review progress for the new version. Binary content changes participate in versioning, including edits that leave the file size unchanged.
+Reads a published batch by ID, including immutable selected comment revisions, original anchors, general instructions, and snapshot references. Edits or deletion of the source comments do not change this batch. Revocation blocks future retrieval; it cannot erase an agent's earlier read.
 
-Submit grounded explanations and use IDs returned by `get_review_context`; never infer IDs from paths or assume that one file is one section. The response reports the accepted behavior count, covered-section count, and remaining unassigned-section count. The interface picks up the plan automatically.
+### `report_feedback_outcomes`
 
-## Local behavior
+Records `addressed`, `not-addressed`, or `needs-clarification` with an explanation, inspected snapshot ID, and published comment revision. Use the tool's advertised input schema for the report envelope. Retrying the same mutation is idempotent. Addressed reports update only the matching current comment revision. Reports against earlier revisions remain historical. Only a human can resolve feedback.
 
-Git access is read-only: Ordiff does not stage, commit, discard, or change source files. The MCP tools do not mark sections reviewed or approve code. Only the human review interface changes review progress.
+## Human handoff
 
-Repository selection and review plans are saved in the app checkout's ignored `.ordiff/workspace.json` file during development, or `~/Library/Application Support/Ordiff/workspace.json` on desktop. Review decisions, checklists, notes, and appearance are stored in the browser or persistent desktop WebView. **Close repository** returns the app to onboarding and clears its active server-side repository and plan. Sample reviews do not connect a repository for MCP access.
+1. Write file, section, or selected-line comments. Intent (Change/Keep/Note) is independent of status (Open/Addressed/Resolved).
+2. Open **Build prompt**, choose files and general instructions, then explicitly publish the MCP batch. Open and Addressed feedback is selected by default; Resolved is opt-in.
+3. Copy the instruction containing the batch ID into your agent. Ordiff does not launch or message the agent.
+4. After the agent reports outcomes, inspect current code and resolve or reopen comments in the feedback panel.
+5. When **Changes available** appears, choose **Review update** to activate the captured snapshot and begin a new pass. Unchanged previously reviewed sections still need confirmation.
 
-The app reads combined working-tree changes against HEAD, including staged, unstaged, and non-ignored untracked files. Repositories without commits are supported. Changed binary files show original and working previews side by side for supported formats; unsupported files retain a fallback. Preview limits and supported formats are in [the README](../README.md#preview-files).
+## Local behavior and limits
 
-Use **Refresh diff** to pick up filesystem edits; the UI receives revision events for newly submitted plans and never continuously scans Git. Git snapshots are limited to 500 changed files. All API and MCP access stays on loopback; `ORDIFF_URL` must use HTTP and `127.0.0.1`, `localhost`, or `[::1]`.
+Git remains read-only. Comparisons support working changes (including staged, unstaged, and non-ignored untracked files), branch merge-base comparisons, and exact commit comparisons. Remote-tracking refs must already exist locally: Ordiff never fetches. Multiple or missing merge bases require an explicit commit comparison.
 
-This version supports one selected local repository and a working-tree comparison. It does not provide GitHub PR access, revision selection, or a hosted repository service.
+A visible review client enables shared background detection: lightweight checks every five seconds and full verification no more than once a minute, with backoff. Hidden or disconnected clients stop detection. New contents are announced, never automatically activated. Reconnect resynchronizes resource state.
+
+Review data lives under `.ordiff/reviews/` in development and `~/Library/Application Support/Ordiff/reviews/` on desktop. Workspace selection remains in `workspace.json`. Sample reviews stay isolated in browser storage. See [storage and recovery](development.md#review-storage-and-recovery).
+
+All access remains loopback and same-origin. `ORDIFF_URL` must use HTTP with `127.0.0.1`, `localhost`, or `[::1]`. Snapshot capture is limited to 500 changed files, 2 MiB full text per file, and 64 MiB full text per snapshot. Larger files retain supported diff/preview fallbacks with explicit availability messages.
 
 ## Verification
 
-`npm test` exercises real temporary Git repositories and a real stdio MCP handshake, tool discovery, diff retrieval, and plan submission into the same HTTP API used by the browser. Integration tests bind a loopback port. See [the development guide](development.md#verification) for the complete checks.
+`npm test` exercises temporary Git repositories, persistence and conflicts, a real stdio MCP handshake, fresh context without activation, plan proposals, immutable batches, and outcome reports. Integration tests bind a loopback port. See [the development guide](development.md#verification).

@@ -50,11 +50,11 @@ Exercise a real repository, same-diff refresh, MCP plan submission, prompt copyi
 
 For repository selection, use **Browse folders** from onboarding and the toolbar repository switcher. Verify native cancellation, an invalid folder, and a valid checkout (including a path containing spaces). Check recent search/removal and persistence across relaunch, and confirm that failures preserve the current review. In browser development, exercise breadcrumbs, Up/Home, hidden folders, and explicit folder opening in the in-app browser. Check both appearances, a narrow window, keyboard focus return, and Escape dismissal.
 
-For energy measurement, use the release app and let startup settle. In Activity Monitor inspect Ordiff, its bundled Node backend, and associated WebKit helpers. Measure five minutes of foreground idle and five minutes minimized; record total CPU time deltas, RSS, and Energy Impact. The idle target is less than 1% of one core averaged across the process group, with zero recurring application polling or Git scans. Also inspect active reading and a document preview. Energy Impact is a relative macOS score; CPU measurements alone do not establish battery runtime.
+For energy measurement, use the release app and let startup settle. In Activity Monitor inspect Ordiff, its bundled Node backend, and associated WebKit helpers. Measure five minutes of foreground idle and five minutes minimized; record total CPU time deltas, RSS, and Energy Impact. The idle target is less than 1% of one core averaged across the process group, with background Git detection paused while minimized. Also inspect active reading and a document preview. Energy Impact is a relative macOS score; CPU measurements alone do not establish battery runtime.
 
 Rust 1.95 has a macOS 27 loader issue when stripping compiler-plugin debug information. Explicit `strip = "none"` for release and build dependencies avoids it; see [the upstream issue](https://github.com/rust-lang/rust/issues/157750).
 
-## Recorded local validation
+## Prior release validation (before review-cycle changes)
 
 Verified on this Apple Silicon laptop running macOS 27.2.1, using release builds of Ordiff 0.2.0 and a disposable four-file repository. Measurements include the native shell, bundled Node, and WebKit WebContent, Networking, and GPU helpers, attributed with macOS process responsibility IDs. CPU is the change in their summed CPU time divided by wall time, expressed as a percentage of one core. Memory is summed RSS, which can count shared pages more than once.
 
@@ -69,3 +69,9 @@ Activity Monitor showed **0.0 Energy Impact** and **Preventing Sleep: No** while
 Validation passed: 45 core tests, 77 UI tests, the production build, native compilation, strict signature verification, and a separate signed-bundle test exercising Git and both MCP tools from a temporary working directory. Native interaction checks covered Finder launching and minimized-window restoration, appearance and progress persistence after relaunch, Markdown and DOCX previews, clipboard copying, an actual Markdown download, the utility window's live comparison, and an occupied-port error followed by successful recovery. Closing the main window kept the utility and API available; closing the final window and Quit both released the API port. The test workspace was disconnected afterward.
 
 Physical sleep/wake remains a manual laptop check. Visibility, request cancellation, reconnect/resynchronization, and parent-pipe shutdown have automated coverage. Repeat energy measurements after changes to idle work or rendering; a framework choice alone does not establish power efficiency.
+
+## Review-cycle upgrade verification
+
+The bundle now includes `shared/` alongside the Node server. Review records and source payloads are backend-managed under the desktop data root's `reviews/` directory; local drafts and appearance remain in the persistent WebView. Closing and reopening restores the displayed snapshot instead of silently advancing to filesystem changes. Another process cannot write the same data root while the ownership lock is held.
+
+Re-run the packaged test after rebuilding. Also verify publish → report → human resolution, proposal acceptance without losing decisions, hidden-window detection pause/resume, and line selection at 390, 768, 1024, 1280, and 1440 px. The older energy measurements above do not establish performance of the new visible-only detector. VoiceOver, physical sleep/wake, and new energy measurements remain manual release checks.

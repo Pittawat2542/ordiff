@@ -2,7 +2,7 @@
 
 Review one behavior at a time, across files.
 
-Ordiff is a local Git review workspace. Open a checkout, inspect its working changes, and optionally connect an agent through MCP to organize the changed hunks into an ordered reading path. Review decisions stay with you.
+Ordiff is a local Git review workspace. Open a checkout, inspect working changes, branch comparisons, or two commits, and optionally connect an agent through MCP to organize the changed hunks into an ordered reading path. Review decisions stay with you.
 
 ![Ordiff showing a behavior's sections in one navigation panel, a highlighted unified diff, optional context, and a stable review footer.](docs/images/review-workspace.jpg)
 
@@ -53,7 +53,7 @@ The welcome screen and repository dialog show the 10 most recently opened reposi
 
 **Undo** restores the latest mark and its previous location for six seconds. Another mark, a repository change, or a diff-version change expires it. Notes and checklist decisions are preserved by Undo.
 
-Use **J / K** for next / previous section, **R** to mark reviewed or continue, **⌘ K / Ctrl K** to search, and **?** for help. Light and dark appearances use the same monochrome surfaces and locally bundled IBM Plex fonts. Navigation moves into a drawer below 1024px.
+Use **J / K** for next / previous section, **R** to mark reviewed or continue, **D** to defer, **⌘ K / Ctrl K** to search, and **?** for help. Light and dark appearances use the same monochrome surfaces and locally bundled IBM Plex fonts. Navigation moves into a drawer below 1024px.
 
 ## Turn feedback into prompts
 
@@ -84,7 +84,7 @@ Changed binary files show **Original** and **Working tree** side by side. Each p
 
 Previews run locally and support files up to **25 MiB per revision**. XLSX displays up to 20 worksheets, 200 rows, and 50 columns per sheet; CSV displays up to 200 rows and 50 columns. Markdown previews show up to 500,000 characters, and DOC text up to 200,000 characters. Unsupported, damaged, or password-protected files show a fallback. Remote Markdown images remain placeholders, and documents are not sent to an external viewer.
 
-Use **Refresh diff** after filesystem edits. Stale previews ask for a refresh instead of showing bytes from a different diff version.
+Visible reviews detect local changes and show **Changes available — Review update**. Activating an update creates a new pass; it never happens automatically. Stale previews show an explicit unavailable state instead of substituting newer bytes.
 
 ## Text diff utility
 
@@ -96,7 +96,7 @@ Comparison is case-sensitive and includes whitespace changes. Line endings norma
 
 ## Connect an agent
 
-Select **Connect agent** for the exact configuration for your checkout. The local stdio MCP server exposes `get_review_context` and `submit_review_plan`. Plans must reference the current diff version and existing section IDs; they cannot mark code reviewed.
+Select **Connect agent** for the exact configuration for your checkout. The local stdio MCP server captures independent agent snapshots, proposes behavior plans, reads explicitly published feedback batches, and records outcome reports. Agents cannot resolve comments or mark code reviewed.
 
 See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and the plan lifecycle.
 
@@ -104,7 +104,7 @@ See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and th
 
 Repository selection, recent repository history, and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json` during browser development, or `~/Library/Application Support/Ordiff/workspace.json` in the desktop app. History belongs to that local backend; desktop and browser development keep separate histories. Review progress, feedback, checklists, and appearance are saved in this browser or the desktop app's persistent WebView. **Close repository** returns to onboarding and clears the server's active repository and plan; recent history and saved feedback remain available when you reopen a repository. A failed connection preserves the current workspace.
 
-Review progress belongs to an exact repository and diff version. Refreshing changed contents starts fresh review progress while keeping feedback; refreshing an unchanged diff preserves progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
+Review progress belongs to a comparison and review pass. Activating changed contents starts a fresh pass while retaining feedback and history; unchanged refreshes preserve progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
 
 ## Development and checks
 
@@ -117,3 +117,19 @@ npm run preview
 `npm test` runs core and UI tests. The production build includes strict TypeScript checking. Development and production preview both use port 5173, so run one at a time.
 
 See [the development guide](docs/development.md) for source layout, rendering packages, local interfaces, and verification.
+
+## Complete review cycles
+
+![Review-cycle controls and captured line feedback in the responsive review workspace.](docs/images/review-cycle.png)
+
+The comparison toolbar selects working changes, branch changes from a merge-base, or two commits. All refs are local or already fetched. The pass selector keeps prior reviews readable; **Since previous pass** shows added, modified, unchanged, and removed sections. Every new pass requires confirmation, including **Previously reviewed · Reconfirm** sections.
+
+Use **Defer & next** to leave a reason and put a section in **Needs another look**. Deferred sections do not count as reviewed. Search can combine file, behavior, feedback, review-state, and pass-change filters.
+
+**Diff display** offers unified/split, wrapping, word highlighting, and display-only whitespace hiding. Expand source context by 20 lines or open a paginated full file with Before/After selection. Click a line gutter, then Shift-click to select a range and add precise feedback. Captured quotes remain available when historical source expires.
+
+Feedback has independent intent and status. Publish an immutable MCP batch from **Build prompt**, copy its instruction, and ask your agent to report outcomes. Addressed feedback awaits human verification; only you resolve it. Later edits never alter a published batch. Review completion and unresolved feedback counts remain separate.
+
+**Organize behaviors** supports manual groups, ordering, explanations, and overlapping membership. Incoming replacement plans require preview and acceptance. **Review storage** shows local usage and cleanup controls. Backend storage preserves real-repository comments and passes across browser or desktop restart; sample feedback stays browser-local. See [recovery and retention](docs/development.md#review-storage-and-recovery).
+
+The sample toolbar also offers **Explore a review cycle**, an isolated walkthrough with two passes, a deferred section, addressed line feedback, and a plan proposal.
