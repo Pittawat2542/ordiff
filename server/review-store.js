@@ -219,8 +219,17 @@ export class ReviewStore {
     const available = Object.values(data.snapshots)
       .filter((s) => !s.evicted)
       .sort((a, b) => a.capturedAt.localeCompare(b.capturedAt));
+    const pending = new Set(
+      Object.values(data.comparisons).flatMap((c) =>
+        c.proposals
+          .filter((p) => p.status === "pending")
+          .map((p) => p.snapshotId),
+      ),
+    );
     const pinned = (id) =>
-      id === data.activeSnapshotId || (data.leases[id] || 0) > Date.now();
+      pending.has(id) ||
+      id === data.activeSnapshotId ||
+      (data.leases[id] || 0) > Date.now();
     let count = available.length,
       bytes = available.reduce(
         (sum, s) => sum + Buffer.byteLength(JSON.stringify(s)),
@@ -806,7 +815,7 @@ export class ReviewStore {
         case "plan.save": {
           revision({ revision: pass.planRevision }, input.expectedRevision);
           const groups = groupsSchema.parse(input.groups);
-          this.validateGroups(snapshot, groups);
+          validateGroups(snapshot, groups);
           pass.planHistory.push({
             revision: pass.planRevision,
             groups: pass.groups,
@@ -826,21 +835,10 @@ export class ReviewStore {
               "Proposal belongs to another comparison.",
             );
           const groups = groupsSchema.parse(input.groups);
-          this.validateGroups(target, groups);
+          validateGroups(target, groups);
           const key = digest([input.snapshotId, groups]);
           const existing = c.proposals.find((p) => p.key === key);
           if (existing) {
-            if (
-              Object.entries(value).some(
-                ([key, value]) =>
-                  JSON.stringify(existing[key]) !== JSON.stringify(value),
-              )
-            )
-              fail(
-                409,
-                "COMMENT_EXISTS",
-                "This comment ID already exists. Save the draft as another comment.",
-              );
             result = existing;
             break;
           }
@@ -970,29 +968,6 @@ export class ReviewStore {
       throw e;
     }
   }
-  validateGroups(snapshot, groups) {
-    const ids = new Set();
-    for (const g of groups) {
-      if (ids.has(g.id))
-        fail(422, "DUPLICATE_GROUP", "Group IDs must be unique.");
-      ids.add(g.id);
-      if (
-        new Set(g.sections).size !== g.sections.length ||
-        g.sections.some((id) => !snapshot.sections.some((s) => s.id === id))
-      )
-        fail(
-          422,
-          "UNKNOWN_SECTION",
-          "Groups must contain unique, existing sections.",
-        );
-      if (Object.keys(g.explanations).some((id) => !g.sections.includes(id)))
-        fail(
-          422,
-          "INVALID_EXPLANATION",
-          "Explanations must reference group sections.",
-        );
-    }
-  }
   validateAnchor(data, anchor, comparisonId) {
     const s = data.snapshots[anchor.snapshotId];
     if (s && s.comparisonId !== comparisonId)
@@ -1016,5 +991,29 @@ export class ReviewStore {
       if (Buffer.byteLength(anchor.quote) > 16384)
         fail(413, "ANCHOR_LIMIT", "Select no more than 16 KiB of text.");
     }
+  }
+}
+
+export function validateGroups(snapshot, groups) {
+  const ids = new Set();
+  for (const g of groups) {
+    if (ids.has(g.id))
+      fail(422, "DUPLICATE_GROUP", "Group IDs must be unique.");
+    ids.add(g.id);
+    if (
+      new Set(g.sections).size !== g.sections.length ||
+      g.sections.some((id) => !snapshot.sections.some((s) => s.id === id))
+    )
+      fail(
+        422,
+        "UNKNOWN_SECTION",
+        "Groups must contain unique, existing sections.",
+      );
+    if (Object.keys(g.explanations).some((id) => !g.sections.includes(id)))
+      fail(
+        422,
+        "INVALID_EXPLANATION",
+        "Explanations must reference group sections.",
+      );
   }
 }

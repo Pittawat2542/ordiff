@@ -1,4 +1,8 @@
-import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join, isAbsolute } from "node:path";
+import { HandoffQueue, planReceipt } from "./handoff-queue.js";
+import { readRepository, repositoryRoot } from "./git.js";
+import { validateGroups } from "./review-store.js";
 import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import * as z from "zod/v4";
@@ -10,25 +14,113 @@ if (
   !["127.0.0.1", "localhost", "[::1]"].includes(base.hostname)
 )
   throw new Error("ORDIFF_URL must point to the local Ordiff server.");
-async function request(endpoint, body = {}, full = false, method = "POST") {
+const dataRoot = process.env.ORDIFF_DATA_DIR;
+const inbox = dataRoot && new HandoffQueue(dataRoot);
+const checkoutFields = {
+  repositoryPath: z
+    .string()
+    .optional()
+    .describe("Absolute path to the intended local checkout."),
+  repositoryId: z.string().optional(),
+  comparisonId: z.string().optional(),
+};
+async function request(endpoint, body = {}) {
   let response;
   try {
     response = await fetch(new URL(endpoint, base), {
-      method,
+      method: "POST",
       headers: { "Content-Type": "application/json" },
-      ...(method === "GET" ? {} : { body: JSON.stringify(body) }),
+      body: JSON.stringify(body),
       signal: AbortSignal.timeout(20000),
     });
-  } catch {
-    throw new Error(
-      "Ordiff is not reachable. Open Ordiff (or run npm run dev), then open a repository in the app.",
+  } catch (cause) {
+    throw Object.assign(
+      new Error(
+        "Open Ordiff to use this operation. Offline handoffs need repositoryPath and the configuration from Connect agent.",
+      ),
+      {
+        code:
+          cause.cause?.code === "ECONNREFUSED" ? "OFFLINE" : "CONNECTION_ERROR",
+      },
     );
   }
   const data = await response.json();
   if (!response.ok)
-    throw new Error(data.error || "Ordiff could not complete the request.");
-  return full ? data : data.workspace;
+    throw Object.assign(
+      new Error(data.error || "Ordiff could not complete the request."),
+      { code: data.code },
+    );
+  return data;
 }
+async function context(input) {
+  try {
+    return await request("/api/context", input);
+  } catch (error) {
+    if (!inbox || !["OFFLINE", "NOT_FOUND"].includes(error.code)) throw error;
+    if (input.snapshotId) {
+      const cached = inbox.read(input.snapshotId, input.repositoryPath);
+      if (cached) return { workspace: cached, visibleSnapshotId: null };
+    }
+    if (
+      error.code !== "OFFLINE" ||
+      input.snapshotId ||
+      !isAbsolute(input.repositoryPath || "")
+    )
+      throw error;
+    const path = await repositoryRoot(input.repositoryPath);
+    let saved;
+    try {
+      saved = JSON.parse(
+        await readFile(join(dataRoot, "workspace.json"), "utf8"),
+      );
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+    const entry = saved?.repositories?.find((repo) => repo.path === path);
+    if (
+      (input.repositoryId && input.repositoryId !== entry?.repositoryId) ||
+      (input.comparisonId && input.comparisonId !== entry?.comparisonId)
+    )
+      throw new Error("Open Ordiff to capture this saved comparison.");
+    const comparison =
+      entry?.comparison ||
+      (saved?.path === path ? saved.comparison : undefined);
+    const snapshot = await readRepository(path, comparison);
+    inbox.capture(snapshot);
+    return { workspace: snapshot, visibleSnapshotId: null };
+  }
+}
+async function sendPlan(version, repositoryPath, groups) {
+  const body = { repositoryPath, snapshotId: version, groups };
+  const receipt = planReceipt(version, groups);
+  try {
+    const { result } = await request("/api/agent/plan", body);
+    return { result, receipt };
+  } catch (error) {
+    if (!inbox || !["OFFLINE", "NOT_FOUND"].includes(error.code)) throw error;
+    const snapshot = inbox.read(version, repositoryPath);
+    if (!snapshot) throw error;
+    validateGroups(snapshot, groups);
+    inbox.enqueue(snapshot.repo.path, body);
+    // If launch raced the enqueue, wake the live importer after the durable commit.
+    try {
+      const response = await request("/api/handoffs/import", {});
+      const failure = response.importErrors.find((e) => e.receipt === receipt);
+      if (failure) throw new Error(failure.message);
+      const { result } = await request("/api/agent/plan", {
+        ...body,
+        repositoryPath: snapshot.repo.path,
+      });
+      return { result, receipt };
+    } catch (retryError) {
+      if (!["OFFLINE", "CONNECTION_ERROR"].includes(retryError.code))
+        throw retryError;
+    }
+    return { receipt };
+  }
+}
+const feedback = async (action, input) =>
+  (await request("/api/agent/feedback", { action, input })).result;
 const result = (data) => ({
   content: [{ type: "text", text: JSON.stringify(data) }],
 });
@@ -46,14 +138,16 @@ function tool(handler) {
 }
 
 serveStdio(() => {
+  const captures = new Map();
   const server = new McpServer({ name: "ordiff", version: "0.3.1" });
   server.registerTool(
     "get_review_context",
     {
       title: "Read the current review diff",
       description:
-        "Read the local repository selected by the human in Ordiff. Captures fresh Git contents without activating them in the human review. Returns the exact diff version and hunk IDs. Request includeDiff to read code, optionally limited to sectionIds. Use those IDs to propose a behavior-based reading order. This tool does not mark anything reviewed.",
+        "Pass repositoryPath for your local Git checkout, including when Ordiff is closed. Captures fresh Git contents without activating them in the human review. Returns the exact diff version and hunk IDs. Request includeDiff to read code, optionally limited to sectionIds. Use those IDs to propose a behavior-based reading order. This tool does not mark anything reviewed.",
       inputSchema: z.object({
+        ...checkoutFields,
         snapshotId: z.string().optional(),
         includeDiff: z.boolean().default(false),
         includePlan: z.boolean().default(false),
@@ -61,8 +155,11 @@ serveStdio(() => {
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    tool(async ({ includeDiff, includePlan, sectionIds, snapshotId }) => {
-      const response = await request("/api/context", { snapshotId }, true);
+    tool(async ({ includeDiff, includePlan, sectionIds, ...target }) => {
+      if (target.snapshotId && !target.repositoryPath && !target.repositoryId)
+        target.repositoryPath =
+          captures.get(target.snapshotId) || inbox?.pathFor(target.snapshotId);
+      const response = await context(target);
       const snapshot = response.workspace;
       const selected = sectionIds
         ? snapshot.sections.filter((section) => sectionIds.includes(section.id))
@@ -75,13 +172,19 @@ serveStdio(() => {
         );
       const data = {
         repo: snapshot.repo.path,
+        captureRef: {
+          repositoryPath: snapshot.repo.path,
+          snapshotId: snapshot.version,
+        },
         version: snapshot.version,
         snapshotId: snapshot.version,
         repositoryId: snapshot.repositoryId,
         comparisonId: snapshot.comparisonId,
         resolved: snapshot.resolved,
         visibleSnapshotId: response.visibleSnapshotId,
-        reviewingOlderSnapshot: response.visibleSnapshotId !== snapshot.version,
+        reviewingOlderSnapshot:
+          !!response.visibleSnapshotId &&
+          response.visibleSnapshotId !== snapshot.version,
         sections: selected.map((section) => ({
           id: section.id,
           path: section.path,
@@ -115,6 +218,8 @@ serveStdio(() => {
         throw new Error(
           "This diff is too large for one result. Read the section metadata, then request code for a smaller set of sectionIds.",
         );
+      captures.set(snapshot.version, snapshot.repo.path);
+      if (captures.size > 100) captures.delete(captures.keys().next().value);
       return data;
     }),
   );
@@ -123,8 +228,14 @@ serveStdio(() => {
     {
       title: "Propose a behavior-based review path",
       description:
-        "Send ordered behavior groups and grounded step explanations to the open Ordiff app. The version must identify the snapshot returned by get_review_context. Replacement plans require human acceptance. Uncovered hunks stay visible as unassigned. A hunk may appear in more than one behavior. Does not edit Git files, stage, commit, approve, or mark code reviewed.",
-      inputSchema: mcpReviewPlanSchema,
+        "Send ordered groups for the exact captureRef from get_review_context. With Ordiff closed, the local adapter queues the handoff and returns a receipt. Replacement plans require human acceptance. Uncovered hunks stay visible as unassigned. A hunk may appear in more than one behavior. Does not edit Git files, stage, commit, approve, or mark code reviewed.",
+      inputSchema: mcpReviewPlanSchema.extend({
+        version: mcpReviewPlanSchema.shape.version.optional(),
+        repositoryPath: checkoutFields.repositoryPath,
+        captureRef: z
+          .object({ repositoryPath: z.string(), snapshotId: z.string() })
+          .optional(),
+      }),
       annotations: {
         readOnlyHint: false,
         destructiveHint: false,
@@ -144,24 +255,44 @@ serveStdio(() => {
           );
         }
       }
-      const response = await request(
-        "/api/plan-proposals",
-        {
-          snapshotId: plan.version,
-          clientMutationId: `plan-${createHash("sha256").update(JSON.stringify(plan)).digest("hex")}`,
-          groups: plan.groups.map((group, index) => ({
-            id: `behavior-${index + 1}`,
-            title: group.title,
-            description: group.description || "",
-            sections: group.sections,
-            explanations: group.explanations || {},
-          })),
-        },
-        true,
+      const version = plan.captureRef?.snapshotId || plan.version;
+      if (!version)
+        throw new Error(
+          "Pass the captureRef or version returned by get_review_context.",
+        );
+      if (
+        plan.captureRef &&
+        ((plan.version && plan.captureRef.snapshotId !== plan.version) ||
+          (plan.repositoryPath &&
+            plan.repositoryPath !== plan.captureRef.repositoryPath))
+      )
+        throw new Error(
+          "Use the exact capture reference returned by get_review_context.",
+        );
+      const groups = plan.groups.map((group, index) => ({
+        id: `behavior-${index + 1}`,
+        title: group.title,
+        description: group.description || "",
+        sections: group.sections,
+        explanations: group.explanations || {},
+      }));
+      const { result: proposal, receipt } = await sendPlan(
+        version,
+        plan.captureRef?.repositoryPath ||
+          plan.repositoryPath ||
+          captures.get(version),
+        groups,
       );
-      const proposal = response.result;
+      if (!proposal)
+        return {
+          version,
+          receipt,
+          status: "queued",
+          message: "Queued for next launch",
+        };
       return {
-        version: plan.version,
+        version,
+        receipt,
         proposalId: proposal.id,
         status:
           proposal.status === "accepted"
@@ -172,7 +303,7 @@ serveStdio(() => {
           .size,
         message:
           proposal.status === "accepted"
-            ? "The review path is now visible in Ordiff."
+            ? "The review path is ready in its checkout."
             : "The proposed reading path awaits human acceptance in Ordiff.",
       };
     }),
@@ -184,16 +315,17 @@ serveStdio(() => {
       description:
         "List explicitly published, non-revoked batches for the selected local comparison. Does not expose unpublished drafts.",
       inputSchema: z.object({
+        ...checkoutFields,
         offset: z.number().int().min(0).default(0),
         limit: z.number().int().min(1).max(100).default(100),
       }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    tool(async ({ offset, limit }) => {
-      const data = await request("/api/feedback-batches", {}, true, "GET");
+    tool(async ({ offset, limit, ...target }) => {
+      const batches = await feedback("batch.list", target);
       return {
-        batches: data.result.slice(offset, offset + limit),
-        total: data.result.length,
+        batches: batches.slice(offset, offset + limit),
+        total: batches.length,
       };
     }),
   );
@@ -203,21 +335,16 @@ serveStdio(() => {
       title: "Read a published feedback batch",
       description:
         "Read an immutable user-published batch with captured source references. Later comment edits do not change this batch.",
-      inputSchema: z.object({ batchId: z.string().min(1) }),
+      inputSchema: z.object({ ...checkoutFields, batchId: z.string().min(1) }),
       annotations: { readOnlyHint: true, openWorldHint: false },
     },
-    tool(async ({ batchId }) => {
-      const data = await request(
-        `/api/feedback-batches/${encodeURIComponent(batchId)}`,
-        {},
-        true,
-        "GET",
-      );
-      if (Buffer.byteLength(JSON.stringify(data.result)) > 2 * 1024 * 1024)
+    tool(async ({ batchId, ...target }) => {
+      const batch = await feedback("batch.get", { ...target, id: batchId });
+      if (Buffer.byteLength(JSON.stringify(batch)) > 2 * 1024 * 1024)
         throw new Error(
           "This batch is too large. Ask the user to publish a smaller selection.",
         );
-      return data.result;
+      return batch;
     }),
   );
   server.registerTool(
@@ -227,6 +354,7 @@ serveStdio(() => {
       description:
         "Report what was addressed in a published batch. Reports never resolve feedback or mark sections reviewed; the human verifies the result.",
       inputSchema: z.object({
+        ...checkoutFields,
         batchId: z.string(),
         snapshotId: z.string(),
         clientMutationId: z.string().min(1).max(160),
@@ -252,15 +380,8 @@ serveStdio(() => {
         openWorldHint: false,
       },
     },
-    tool(
-      async ({ batchId, ...body }) =>
-        (
-          await request(
-            `/api/feedback-batches/${encodeURIComponent(batchId)}/reports`,
-            body,
-            true,
-          )
-        ).result,
+    tool(async ({ batchId, ...body }) =>
+      feedback("batch.report", { ...body, id: batchId }),
     ),
   );
   return server;

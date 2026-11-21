@@ -179,12 +179,7 @@ async function addedFile(root, path) {
     ),
   ];
 }
-async function readRepositoryOnce(
-  input,
-  comparison = { kind: "working-tree" },
-) {
-  const { comparisonSchema } = await import("../shared/contracts.js");
-  comparison = comparisonSchema.parse(comparison);
+export async function repositoryRoot(input) {
   if (typeof input !== "string" || !input.trim())
     throw new Error("Enter a local Git repository directory.");
   let root;
@@ -196,6 +191,15 @@ async function readRepositoryOnce(
       "This directory is not an accessible Git repository. Check the path and try again.",
     );
   }
+  return root;
+}
+async function readRepositoryOnce(
+  input,
+  comparison = { kind: "working-tree" },
+) {
+  const { comparisonSchema } = await import("../shared/contracts.js");
+  comparison = comparisonSchema.parse(comparison);
+  const root = await repositoryRoot(input);
   let head = "";
   try {
     head = (await git(root, ["rev-parse", "--verify", "HEAD"])).trim();

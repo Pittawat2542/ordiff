@@ -1,5 +1,6 @@
 import { sourceSignature } from "./git.js";
 import { cycleRoute, publicWorkspace } from "./cycle-api.js";
+import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { WorkspaceStore } from "./workspace.js";
 import {
@@ -36,7 +37,10 @@ export function createApi({
   store = new WorkspaceStore(),
   defaultPath = process.cwd(),
 } = {}) {
-  const ready = store.acquire().then(() => store.restore());
+  const ready = store
+    .acquire()
+    .then(() => store.restore())
+    .then(() => store.importHandoffs());
   ready.catch(() => {});
   let clients = 0,
     timer,
@@ -53,7 +57,7 @@ export function createApi({
       const current = store.snapshot(),
         next = await sourceSignature(current);
       if (next !== signature || Date.now() - lastFull >= 60000) {
-        await store.capture("detector");
+        await store.capture("detector", current);
         signature = next;
         lastFull = Date.now();
       }
@@ -108,9 +112,13 @@ export function createApi({
           "Cache-Control": "no-store",
           "X-Content-Type-Options": "nosniff",
         });
-        const notify = (revision, type = "workspace-updated") =>
+        const notify = (
+          revision,
+          type = "workspace-updated",
+          target = store.snapshot(),
+        ) =>
           response.write(
-            `data: ${JSON.stringify({ revision, type, repositoryId: store.snapshot()?.repositoryId, comparisonId: store.snapshot()?.comparisonId })}\n\n`,
+            `data: ${JSON.stringify({ revision, type, repositoryId: target?.repositoryId, comparisonId: target?.comparisonId, ...(type === "checkout-activity" ? { repositories: store.repositories } : {}) })}\n\n`,
           );
         store.on("revision", notify);
         response.on("close", () => {
@@ -140,13 +148,19 @@ export function createApi({
         const requestedVersion = url.searchParams.get("version");
         let authorized;
         try {
+          const scope = await store.checkoutSnapshot(
+            url.searchParams.get("repositoryId"),
+            url.searchParams.get("comparisonId"),
+          );
           authorized =
-            store.snapshot()?.version === requestedVersion
-              ? store.snapshot()
-              : store.reviews.getSnapshot(
-                  store.snapshot()?.repo.path,
-                  requestedVersion,
-                );
+            scope?.version === requestedVersion
+              ? scope
+              : store.reviews.getSnapshot(scope?.repo.path, requestedVersion);
+          if (
+            url.searchParams.has("comparisonId") &&
+            authorized.comparisonId !== url.searchParams.get("comparisonId")
+          )
+            throw new Error("Preview belongs to a different comparison.");
         } catch (error) {
           if (error.status === 404) error.status = 409;
           throw error;
@@ -190,7 +204,12 @@ export function createApi({
             ordiff: {
               command: process.execPath,
               args: [fileURLToPath(new URL("./mcp.js", import.meta.url))],
-              env: { ORDIFF_URL: url.origin },
+              env: {
+                ORDIFF_URL: url.origin,
+                ...(store.stateFile
+                  ? { ORDIFF_DATA_DIR: dirname(store.stateFile) }
+                  : {}),
+              },
             },
           },
         };
@@ -198,6 +217,8 @@ export function createApi({
           revision: store.revision,
           workspace: publicWorkspace(store.snapshot()),
           recentRepositories: store.recentRepositories,
+          repositories: store.repositories,
+          importErrors: store.importErrors,
           defaultPath,
           mcpConfig,
         });
@@ -230,26 +251,38 @@ export function createApi({
       if (request.method !== "POST")
         return reply(response, 405, { error: "Method not allowed." });
       const body = await readJson(request);
-      if (url.pathname === "/api/repository") await store.connect(body.path);
+      if (url.pathname === "/api/repository")
+        await store.connect(body.path, {
+          observedActivityId: body.observedActivityId,
+          comparisonId: body.comparisonId,
+        });
       else if (url.pathname === "/api/recent-repositories/remove")
         await store.removeRecentRepository(body.path);
-      else if (url.pathname === "/api/disconnect") await store.disconnect();
-      else if (url.pathname === "/api/refresh") await store.refresh();
+      else if (url.pathname === "/api/disconnect")
+        await store.disconnect(body.repositoryId);
+      else if (url.pathname === "/api/refresh")
+        await store.refresh(body.repositoryId, body.comparisonId);
       else if (url.pathname === "/api/context") {
-        const snapshot = body.snapshotId
-          ? store.reviews.getSnapshot(
-              store.snapshot().repo.path,
-              body.snapshotId,
-            )
-          : await store.capture();
+        const { snapshot, visibleSnapshotId } = await store.agentContext(body);
         return reply(response, 200, {
           revision: store.revision,
-          workspace: publicWorkspace(
-            snapshot.version === store.snapshot().version
-              ? store.reviews.decorate(snapshot)
-              : snapshot,
-          ),
-          visibleSnapshotId: store.snapshot().version,
+          workspace: publicWorkspace(snapshot),
+          visibleSnapshotId,
+        });
+      } else if (url.pathname === "/api/agent/plan") {
+        return reply(response, 200, { result: await store.agentPlan(body) });
+      } else if (url.pathname === "/api/handoffs/import") {
+        const errors = await store.importHandoffs();
+        return reply(response, 200, {
+          importErrors: errors,
+          repositories: store.repositories,
+          revision: store.revision,
+        });
+      } else if (url.pathname === "/api/agent/feedback") {
+        if (!["batch.get", "batch.list", "batch.report"].includes(body.action))
+          throw new Error("Unknown agent feedback operation.");
+        return reply(response, 200, {
+          result: await store.agentFeedback(body.action, body.input),
         });
       } else if (url.pathname === "/api/review-plan") {
         const { reviewPlanSchema } = await import("./schema.js");
@@ -259,6 +292,8 @@ export function createApi({
         revision: store.revision,
         workspace: publicWorkspace(store.snapshot()),
         recentRepositories: store.recentRepositories,
+        repositories: store.repositories,
+        importErrors: store.importErrors,
       });
     } catch (error) {
       const message =

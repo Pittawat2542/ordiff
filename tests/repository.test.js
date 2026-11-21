@@ -243,3 +243,259 @@ test('home-relative repository paths resolve to their canonical root', async t =
   const snapshot = await readRepository(`~/${relative(homedir(), path)}`);
   assert.equal(snapshot.repo.path, path);
 });
+
+test("queued handoffs survive deletion of their checkout, duplicate delivery and restart", async (t) => {
+  const root = await fixture(t);
+  const path = await fixture(t);
+  const stateFile = join(root, ".ordiff/workspace.json");
+  const initial = new WorkspaceStore({ stateFile });
+  await initial.connect(root);
+  await writeFile(join(path, "note.txt"), "original handoff\n");
+  const snapshot = await readRepository(path);
+  const { HandoffQueue } = await import("../server/handoff-queue.js");
+  const queue = new HandoffQueue(join(root, ".ordiff"));
+  queue.capture(snapshot);
+  const plan = {
+    snapshotId: snapshot.version,
+    groups: [
+      {
+        id: "g",
+        title: "Read note",
+        sections: [snapshot.sections[0].id],
+        explanations: {},
+      },
+    ],
+  };
+  const receipt = queue.enqueue(path, plan);
+  assert.equal(queue.enqueue(path, plan), receipt);
+  await rm(path, { recursive: true });
+  const restored = new WorkspaceStore({ stateFile });
+  await restored.restore();
+  await restored.importHandoffs();
+  assert.equal(restored.snapshot().repo.path, root);
+  assert.equal(restored.repositories.find((r) => r.path === path).unseen, true);
+  await restored.connect(path);
+  assert.equal(restored.snapshot().groups[0].title, "Read note");
+  assert.equal(restored.snapshot().version, snapshot.version);
+  const reopened = new WorkspaceStore({ stateFile });
+  await reopened.restore();
+  assert.equal(reopened.snapshot().version, snapshot.version);
+});
+
+test("a full inbox rejects the write and preserves the previous receipt", async (t) => {
+  const { HandoffQueue } = await import("../server/handoff-queue.js");
+  const path = await fixture(t, false);
+  const snapshot = await readRepository(path);
+  const queue = new HandoffQueue(
+    join(path, ".ordiff"),
+    Buffer.byteLength(JSON.stringify(snapshot)) + 300,
+  );
+  queue.capture(snapshot);
+  const groups = [
+    {
+      id: "g",
+      title: "Review",
+      sections: [snapshot.sections[0].id],
+      explanations: {},
+    },
+  ];
+  const receipt = queue.enqueue(path, { snapshotId: snapshot.version, groups });
+  assert.throws(
+    () =>
+      queue.enqueue(path, {
+        snapshotId: snapshot.version,
+        groups: [{ ...groups[0], description: "x".repeat(500) }],
+      }),
+    /full/,
+  );
+  assert.deepEqual(
+    queue.pending().map((row) => row.receipt),
+    [receipt],
+  );
+});
+
+test("switching back resumes the selected comparison and can open activity on an earlier comparison", async (t) => {
+  const path = await fixture(t);
+  const other = await fixture(t);
+  const store = new WorkspaceStore();
+  await writeFile(join(path, "local.txt"), "working changes\n");
+  await store.connect(path);
+  const working = store.snapshot();
+  const head = git(path, "rev-parse", "HEAD");
+  await store.selectComparison(
+    { kind: "commits", beforeRef: head, afterRef: head },
+    working.repositoryId,
+  );
+  const commits = store.snapshot();
+  await store.connect(other);
+  await store.agentPlan({
+    repositoryPath: path,
+    snapshotId: working.version,
+    groups: [
+      {
+        id: "local",
+        title: "Read working changes",
+        sections: [working.sections[0].id],
+        explanations: {},
+      },
+    ],
+  });
+  const entry = store.repositories.find((row) => row.path === path);
+  assert.equal(entry.activityComparisonId, working.comparisonId);
+  await store.connect(path);
+  assert.equal(store.snapshot().comparisonId, commits.comparisonId);
+  await store.connect(path, { comparisonId: entry.activityComparisonId });
+  assert.equal(store.snapshot().cycle.pass.id, working.cycle.pass.id);
+  assert.equal(store.snapshot().groups[0].title, "Read working changes");
+});
+
+test("concurrent agents in sibling worktrees deliver independent plans without changing selection", async (t) => {
+  const root = await fixture(t);
+  const base = await realpath(
+    await mkdtemp(join(tmpdir(), "ordiff-worktrees-")),
+  );
+  t.after(() => rm(base, { recursive: true, force: true }));
+  const worktrees = ["api", "web"].map((name) => join(base, name));
+  for (const path of worktrees) {
+    git(root, "worktree", "add", "--detach", path, "HEAD");
+    await writeFile(join(path, "changes.txt"), path);
+  }
+  const store = new WorkspaceStore();
+  await store.connect(root);
+  await Promise.all(
+    worktrees.map(async (repositoryPath) => {
+      const { snapshot } = await store.agentContext({ repositoryPath });
+      await store.agentPlan({
+        repositoryPath,
+        snapshotId: snapshot.version,
+        groups: [
+          {
+            id: "changes",
+            title: repositoryPath,
+            sections: [snapshot.sections[0].id],
+            explanations: {},
+          },
+        ],
+      });
+    }),
+  );
+  assert.deepEqual(
+    store.repositories
+      .filter((r) => r.unseen)
+      .map((r) => r.path)
+      .sort(),
+    worktrees,
+  );
+  assert.equal(store.snapshot().repo.path, root);
+  for (const path of worktrees) {
+    await store.connect(path);
+    assert.equal(store.snapshot().groups[0].title, path);
+  }
+});
+
+test("failed handoff imports identify the checkout and can be retried after storage is available", async (t) => {
+  const root = await fixture(t, false);
+  const stateFile = join(root, ".ordiff/workspace.json");
+  const { HandoffQueue } = await import("../server/handoff-queue.js");
+  const snapshot = await readRepository(root);
+  const queue = new HandoffQueue(join(root, ".ordiff"));
+  queue.capture(snapshot);
+  const receipt = queue.enqueue(root, {
+    snapshotId: snapshot.version,
+    groups: [
+      {
+        id: "work",
+        title: "Work",
+        sections: [snapshot.sections[0].id],
+        explanations: {},
+      },
+    ],
+  });
+  const limited = new WorkspaceStore({
+    stateFile,
+    reviewLimits: { maxBytes: 1 },
+  });
+  const failures = await limited.importHandoffs();
+  assert.equal(failures[0].path, root);
+  assert.equal(failures[0].receipt, receipt);
+  assert.equal(queue.pending().length, 1);
+  const restored = new WorkspaceStore({ stateFile });
+  assert.deepEqual(await restored.importHandoffs(), []);
+  assert.equal(queue.pending().length, 0);
+  assert.equal(restored.snapshot(), null);
+  assert.ok(restored.repositories[0].unseen);
+});
+
+test("a plan can target the same subdirectory used for its capture", async (t) => {
+  const path = await fixture(t, false);
+  const repositoryPath = join(path, "pipeline");
+  const store = new WorkspaceStore();
+  const { snapshot } = await store.agentContext({ repositoryPath });
+  await store.agentPlan({
+    repositoryPath,
+    snapshotId: snapshot.version,
+    groups: [
+      {
+        id: "subdir",
+        title: "Subdirectory",
+        sections: [snapshot.sections[0].id],
+        explanations: {},
+      },
+    ],
+  });
+  assert.equal(store.repositories[0].path, path);
+});
+
+test("published feedback and outcome reports stay in their originating checkout", async (t) => {
+  const first = await fixture(t, false);
+  const other = await fixture(t);
+  const store = new WorkspaceStore();
+  await store.connect(first);
+  const { repositoryId, comparisonId, version } = store.snapshot();
+  const scope = { repositoryId, comparisonId };
+  const comment = await store.cycleAction("comment.create", {
+    path: "pipeline/run.ts",
+    text: "Check the status",
+    intent: "change",
+  });
+  const batch = await store.cycleAction("batch.publish", {
+    commentIds: [comment.id],
+  });
+  await store.connect(other);
+  const read = await store.agentFeedback("batch.get", {
+    ...scope,
+    id: batch.id,
+  });
+  assert.equal(read.comments[0].text, "Check the status");
+  const report = {
+    ...scope,
+    id: batch.id,
+    snapshotId: version,
+    clientMutationId: "report-status",
+    outcomes: [
+      {
+        commentId: comment.id,
+        outcome: "addressed",
+        explanation: "Checked the source",
+      },
+    ],
+  };
+  await store.agentFeedback("batch.report", report);
+  assert.equal(
+    store.repositories.find((r) => r.path === first).activity,
+    "Feedback report",
+  );
+  assert.equal(store.snapshot().cycle.reports.length, 0);
+  assert.equal(store.snapshot().repo.path, other);
+  await assert.rejects(
+    store.agentFeedback("batch.get", {
+      repositoryPath: other,
+      comparisonId,
+      id: batch.id,
+    }),
+  );
+  await store.connect(first);
+  await store.agentFeedback("batch.report", report);
+  assert.equal(store.snapshot().cycle.reports.length, 1);
+  assert.equal(store.repositories.find((r) => r.path === first).unseen, false);
+});

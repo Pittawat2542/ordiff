@@ -168,3 +168,79 @@ test('a real MCP stdio client can discover tools, read Git hunks, and send a pla
   const stale = await rpc('tools/call', { name: 'submit_review_plan', arguments: { version: 'stale', groups: [{ title: 'Invalid', sections: [context.sections[0].id] }] } });
   assert.equal(stale.isError, true);
 });
+
+test("a background capture, plan and retry stay tied to their original checkout", async (t) => {
+  const { path, url, post } = await setup(t);
+  const other = await realpath(await mkdtemp(join(tmpdir(), "ordiff-second-")));
+  t.after(() => rm(other, { recursive: true, force: true }));
+  execFileSync("git", ["-C", other, "init", "-q"]);
+  await writeFile(join(other, "web.ts"), "export const web = true;\n");
+  const first = (await (await post("/api/repository", { path })).json())
+    .workspace;
+  const context = await (
+    await post("/api/context", { repositoryPath: other })
+  ).json();
+  assert.equal(context.workspace.repo.path, other);
+  const input = {
+    repositoryPath: other,
+    snapshotId: context.workspace.version,
+    groups: [
+      {
+        id: "web",
+        title: "Web",
+        sections: [context.workspace.sections[0].id],
+        explanations: {},
+      },
+    ],
+  };
+  const submit = async () => (await post("/api/agent/plan", input)).json();
+  const plan = await submit();
+  assert.ok(plan.result?.id);
+  const state = async () => (await fetch(url + "/api/workspace")).json();
+  assert.equal((await state()).workspace.version, first.version);
+  assert.deepEqual(
+    (await state()).repositories.filter((r) => r.unseen).map((r) => r.path),
+    [other],
+  );
+  assert.match(
+    (await (await post("/api/context")).json()).error,
+    /repositoryPath/,
+  );
+  await writeFile(join(other, "web.ts"), "changed after capture\n");
+  const opened = (await (await post("/api/repository", { path: other })).json())
+    .workspace;
+  assert.equal(opened.version, context.workspace.version);
+  assert.equal(opened.groups[0].title, "Web");
+  assert.equal((await submit()).result.id, plan.result.id);
+  assert.ok(!(await state()).repositories.some((r) => r.unseen));
+});
+
+test("a delayed review edit and preview use the checkout they were opened from", async (t) => {
+  const { path, url, post } = await setup(t);
+  const first = (await (await post("/api/repository", { path })).json())
+    .workspace;
+  await post("/api/disconnect");
+  const edit = await post("/api/cycle", {
+    repositoryId: first.repositoryId,
+    comparisonId: first.comparisonId,
+    action: "general",
+    input: { text: "Remember this checkout", expectedRevision: 0 },
+  });
+  assert.equal(edit.status, 200);
+  assert.equal(
+    (await edit.json()).workspace.cycle.feedback.general,
+    "Remember this checkout",
+  );
+  const scope = new URLSearchParams({
+    repositoryId: first.repositoryId,
+    comparisonId: first.comparisonId,
+  });
+  assert.equal(
+    (await fetch(url + "/api/snapshots/" + first.version + "?" + scope)).status,
+    200,
+  );
+  assert.equal(
+    (await (await fetch(url + "/api/workspace")).json()).workspace,
+    null,
+  );
+});

@@ -15,7 +15,11 @@ export function publicWorkspace(snapshot) {
 export async function cycleRoute(store, request, url, body, reply) {
   const path = url.pathname,
     method = request.method;
-  const workspace = store.snapshot();
+  const scope = url.searchParams;
+  const workspace = await store.checkoutSnapshot(
+    body.repositoryId || scope.get("repositoryId"),
+    body.comparisonId || scope.get("comparisonId"),
+  );
   if (!workspace)
     throw cycleError(409, "NO_REPOSITORY", "Open a repository first.");
   const pagination = () => ({
@@ -26,15 +30,26 @@ export async function cycleRoute(store, request, url, body, reply) {
     ),
   });
   const result = async (action, input = {}) => {
-    const value = await store.cycleAction(action, {
-      repositoryId: workspace.repositoryId,
-      comparisonId: workspace.comparisonId,
-      ...input,
-    });
+    const value = await store.cycleAction(
+      action,
+      {
+        ...input,
+        repositoryId: workspace.repositoryId,
+        comparisonId: workspace.comparisonId,
+      },
+      workspace,
+    );
     reply(200, {
       result: value,
+      repositories: store.repositories,
+      importErrors: store.importErrors,
       revision: store.revision,
-      workspace: publicWorkspace(store.snapshot()),
+      workspace: publicWorkspace(
+        await store.checkoutSnapshot(
+          workspace.repositoryId,
+          workspace.comparisonId,
+        ),
+      ),
     });
     return true;
   };
@@ -73,6 +88,15 @@ export async function cycleRoute(store, request, url, body, reply) {
       ))
   ) {
     const snapshot = store.reviews.getSnapshot(workspace.repo.path, match[1]);
+    if (
+      scope.has("comparisonId") &&
+      scope.get("comparisonId") !== snapshot.comparisonId
+    )
+      throw cycleError(
+        409,
+        "WRONG_COMPARISON",
+        "This snapshot belongs to another comparison.",
+      );
     if (!match[2]) {
       const { offset, limit } = pagination();
       reply(200, {
@@ -173,13 +197,13 @@ export async function cycleRoute(store, request, url, body, reply) {
   )
     return result("pass.changes", { passId: match[1] });
   if (method === "POST" && path === "/api/comparisons") {
-    await store.selectComparison(
+    const selected = await store.selectComparison(
       body.spec || body,
       body.repositoryId || workspace.repositoryId,
     );
     reply(200, {
       revision: store.revision,
-      workspace: publicWorkspace(store.snapshot()),
+      workspace: publicWorkspace(selected),
     });
     return true;
   }
@@ -190,7 +214,7 @@ export async function cycleRoute(store, request, url, body, reply) {
     if (match[1] !== workspace.comparisonId)
       throw cycleError(409, "COMPARISON_CHANGED", "The comparison changed.");
     if (match[2] === "capture") {
-      const snapshot = await store.capture();
+      const snapshot = await store.capture("agent", workspace);
       reply(200, {
         snapshot: publicWorkspace(snapshot),
         revision: store.revision,
@@ -198,9 +222,9 @@ export async function cycleRoute(store, request, url, body, reply) {
     } else {
       if (body.expectedPassId !== workspace.cycle.pass.id)
         throw cycleError(409, "PASS_CHANGED", "The active pass changed.");
-      await store.activateSnapshot(body.snapshotId, body.expectedPassId);
+      const selected = await store.activateSnapshot(body.snapshotId, body.expectedPassId);
       reply(200, {
-        workspace: publicWorkspace(store.snapshot()),
+        workspace: publicWorkspace(selected),
         revision: store.revision,
       });
     }

@@ -4,14 +4,13 @@ Ordiff's local MCP stdio server lets an agent capture a fresh snapshot independe
 
 ## Setup
 
-For the installed macOS app, open Ordiff and use **Connect agent** to copy its configuration. It references the bundled Node executable and MCP module in `Ordiff.app`, with `ORDIFF_URL=http://127.0.0.1:47831`. Keep at least one Ordiff window open (minimized is fine). Closing the last window stops the backend; tool calls then ask you to reopen Ordiff. Moving the app requires copying its configuration again.
+For the installed macOS app, open Ordiff and use **Connect agent** to copy its configuration. It references the bundled Node executable and MCP module in `Ordiff.app`, with `ORDIFF_URL=http://127.0.0.1:47831`. Copy the configuration again after upgrading to multi-repo support. It includes the data directory used for offline delivery. Moving the app requires copying its configuration again.
 
 For browser development:
 
 1. With Node.js 22.13 or later and Git installed, run `npm install`, then `npm run dev` in this checkout. The app and local API share port 5173. A built app started with `npm run preview` supports the same API.
-2. Open a local repository in Ordiff.
-3. Click **Connect agent** in the toolbar and copy the configuration into your MCP client. The dialog contains the exact Node executable and server path for this machine.
-4. Ask the agent: “Read the current Ordiff diff. Group the changes by behavior and submit a review plan with a useful reading order and grounded explanations.”
+2. Click **Connect agent** in the toolbar and copy the configuration into your MCP client. The dialog contains the exact Node executable and server path for this machine.
+3. Ask the agent to pass its absolute checkout path to `get_review_context`. For example, “Read the Ordiff diff for this checkout. Group the changes by behavior and submit a review plan with a useful reading order and grounded explanations.”
 
 The configuration follows this shape. Replace the example paths with the exact values from the app:
 
@@ -22,30 +21,31 @@ The configuration follows this shape. Replace the example paths with the exact v
       "command": "/absolute/path/to/node",
       "args": ["/absolute/path/to/ordiff-ui/server/mcp.js"],
       "env": {
-        "ORDIFF_URL": "http://127.0.0.1:5173"
+        "ORDIFF_URL": "http://127.0.0.1:5173",
+        "ORDIFF_DATA_DIR": "/absolute/path/to/ordiff-ui/.ordiff"
       }
     }
   }
 }
 ```
 
-Client configuration formats differ; use these command, arguments, and environment values in your client's MCP settings. No API key is required. Keep the Ordiff app running while the agent uses its tools. The client launches the stdio server; there is no remote MCP endpoint to publish.
+Client configuration formats differ; use these command, arguments, and environment values in your client's MCP settings. No API key is required. Use the same configuration across checkouts. The client launches the stdio server; there is no remote MCP endpoint to publish.
 
 ## Tools
 
 ### `get_review_context`
 
-Captures fresh local Git contents without activating a human review pass. Returns `repositoryId`, `comparisonId`, `snapshotId`, the compatible `version` alias, resolved revisions, visible snapshot ID, and section metadata. Pass `snapshotId` on subsequent calls to read the exact captured snapshot. The active review, progress, scroll position, and drafts remain unchanged.
+Pass `repositoryPath` for the checkout the agent is working in. Subdirectories resolve to their Git worktree root. Ordiff captures the saved comparison for that checkout, defaulting to working changes, and returns a `captureRef`, snapshot version, resolved revisions, and section IDs. When running, Ordiff also returns repository and comparison IDs. Use the same checkout and `snapshotId` to reread that capture. A pathless initial call needs one unambiguous checkout in the running app.
 
 `includeDiff` and `includePlan` default to false. Pass up to 100 `sectionIds` to retrieve a subset. Responses are bounded to 2 MiB: read metadata first and request fewer sections if needed. Binary sections contain descriptions, not bytes. Retained source has a renewable 30-minute capture lease; historical payloads may later be evicted.
 
 ### `submit_review_plan`
 
-Pass the captured `version` and ordered groups:
+Pass the `captureRef` from the context response and ordered groups. Existing clients can still supply `version`.
 
 ```json
 {
-  "version": "<captured snapshot ID>",
+  "captureRef": {"repositoryPath": "/absolute/path/to/checkout", "snapshotId": "<captured snapshot ID>"},
   "groups": [{
     "title": "Prevent empty tasks",
     "description": "Validation and its consumers",
@@ -58,6 +58,10 @@ Pass the captured `version` and ordered groups:
 Groups contain 1–500 section references; there may be 1–100 groups. Titles are limited to 160 characters, descriptions to 1,000, explanations to 2,000. Explanations must reference sections in their group. IDs are validated against the captured snapshot, without refreshing Git. Identical submissions are idempotent.
 
 A plan applies immediately only when it targets the visible snapshot and no plan exists. Otherwise it becomes a proposal for human preview and acceptance. Replacement plans retain review decisions, comments, and previous plan revisions. Sections can appear in multiple groups but count once; uncovered sections remain visible. Agents cannot accept proposals or mark sections reviewed.
+
+The first successful submission makes the checkout available in the switcher. With Ordiff closed, the adapter stores the captured source and plan in the local handoff inbox and returns a `queued` status and receipt. Reopening imports the original snapshot, even if the checkout has moved or been deleted. Receipts identify a snapshot and plan across retries. The inbox allows 512 MiB of captured payloads and plans. Pending submissions stay until imported. Unsubmitted captures have a 30-minute lease.
+
+Feedback tools require the running app. Use the repository and comparison IDs in the copied handoff instruction when reading a batch or reporting outcomes.
 
 ### `list_feedback_batches`
 

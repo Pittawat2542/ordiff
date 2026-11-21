@@ -1,19 +1,23 @@
+import { HandoffQueue, planReceipt } from "./handoff-queue.js";
 import { acquireDataLock } from "./data-lock.js";
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { dirname, isAbsolute } from "node:path";
-import { readRepository } from "./git.js";
-import { ReviewStore, cycleError } from "./review-store.js";
+import { readRepository, repositoryRoot } from "./git.js";
+import { ReviewStore, cycleError, validateGroups } from "./review-store.js";
 import { EventEmitter } from "node:events";
 
 export class WorkspaceStore extends EventEmitter {
   #current = null;
   #plan = null;
   #recent = [];
+  #registry = new Map();
+  importErrors = [];
   #queue = Promise.resolve();
   revision = 0;
   constructor({ stateFile = null, reviewLimits = {} } = {}) {
     super();
     this.stateFile = stateFile;
+    this.inbox = stateFile ? new HandoffQueue(dirname(stateFile)) : null;
     this.reviews = new ReviewStore(stateFile, reviewLimits);
   }
   async acquire() {
@@ -28,6 +32,254 @@ export class WorkspaceStore extends EventEmitter {
   }
   get recentRepositories() {
     return this.#recent.map((repo) => ({ ...repo }));
+  }
+  get repositories() {
+    return [...this.#registry.values()]
+      .filter((repo) => !repo.hidden)
+      .sort(
+        (a, b) =>
+          Number(!!b.unseen) - Number(!!a.unseen) ||
+          (b.unseen ? (b.activityAt || 0) - (a.activityAt || 0) : 0) ||
+          (b.viewedAt || 0) - (a.viewedAt || 0),
+      );
+  }
+  #remember(snapshot, changes = {}) {
+    const { path, name, branch } = snapshot.repo;
+    this.#registry.set(path, {
+      ...this.#registry.get(path),
+      name,
+      path,
+      branch,
+      repositoryId: snapshot.repositoryId,
+      ...changes,
+    });
+  }
+  async #savedSnapshot(path, comparisonId) {
+    const data = await this.reviews.load(path);
+    let id = data.activeSnapshotId;
+    if (comparisonId) {
+      const comparison = data.comparisons[comparisonId];
+      id = comparison?.passes.find(
+        (p) => p.id === comparison.activePassId,
+      )?.snapshotId;
+    }
+    return id ? this.reviews.getSnapshot(path, id) : null;
+  }
+  async checkoutSnapshot(repositoryId, comparisonId) {
+    if (!repositoryId) return this.snapshot();
+    if (
+      this.#current?.repositoryId === repositoryId &&
+      (!comparisonId || this.#current.comparisonId === comparisonId)
+    )
+      return this.snapshot();
+    const path = await this.#agentPath({ repositoryId });
+    const saved = await this.#savedSnapshot(path, comparisonId);
+    if (!saved)
+      throw cycleError(
+        404,
+        "UNKNOWN_COMPARISON",
+        "This checkout has no matching review.",
+      );
+    return this.reviews.decorate(saved);
+  }
+  async #agentPath({ repositoryPath, repositoryId }) {
+    if (repositoryPath) {
+      if (
+        this.#registry.has(repositoryPath) ||
+        this.reviews.records.has(repositoryPath)
+      )
+        return repositoryPath;
+      return repositoryRoot(repositoryPath);
+    }
+    if (repositoryId) {
+      const entry = [...this.#registry.values()].find(
+        (r) => r.repositoryId === repositoryId,
+      );
+      if (!entry)
+        throw cycleError(
+          404,
+          "UNKNOWN_CHECKOUT",
+          "Unknown checkout. Supply its repositoryPath.",
+        );
+      return entry.path;
+    }
+    const paths = new Set(this.repositories.map((r) => r.path));
+    if (this.#current) paths.add(this.#current.repo.path);
+    if (paths.size !== 1)
+      throw cycleError(
+        409,
+        "CHECKOUT_REQUIRED",
+        "Supply repositoryPath to identify your local checkout.",
+      );
+    return paths.values().next().value;
+  }
+  agentContext(input) {
+    return this.run(async () => {
+      const path = await this.#agentPath(input);
+      const visible = await this.#savedSnapshot(path, input.comparisonId);
+      const data = this.reviews.records.get(path);
+      if (
+        (input.repositoryId && input.repositoryId !== data.repository.id) ||
+        (input.comparisonId && !data.comparisons[input.comparisonId])
+      )
+        throw cycleError(
+          409,
+          "WRONG_CAPTURE",
+          "The requested checkout or comparison does not match this path.",
+        );
+      let raw;
+      if (input.snapshotId) {
+        raw = this.reviews.getSnapshot(path, input.snapshotId);
+      } else {
+        raw = await readRepository(path, visible?.comparison);
+        const oldLatest =
+          visible && this.reviews.decorate(visible).cycle.latestSnapshotId;
+        await this.reviews.capture(raw, false);
+        if (visible && oldLatest !== raw.version) {
+          this.emit("revision", ++this.revision, "snapshot-available", raw);
+        }
+      }
+      if (
+        (input.repositoryId && input.repositoryId !== raw.repositoryId) ||
+        (input.comparisonId && input.comparisonId !== raw.comparisonId)
+      )
+        throw cycleError(
+          409,
+          "WRONG_CAPTURE",
+          "The capture belongs to a different checkout or comparison.",
+        );
+      this.inbox?.capture(raw);
+      return {
+        snapshot: this.reviews.decorate(raw),
+        visibleSnapshotId: visible?.version || null,
+      };
+    });
+  }
+  agentPlan(input) {
+    return this.run(async () => {
+      // A staged capture is already bound to its canonical checkout, even if
+      // the checkout was removed between capture and the app starting.
+      const stagedPath = this.inbox?.pathFor(input.snapshotId);
+      const path =
+        stagedPath &&
+        (!input.repositoryPath || input.repositoryPath === stagedPath)
+          ? stagedPath
+          : await this.#agentPath(input);
+      await this.reviews.load(path);
+      let snapshot;
+      try {
+        snapshot = this.reviews.getSnapshot(path, input.snapshotId);
+      } catch (error) {
+        if (![404, 410].includes(error.status)) throw error;
+        snapshot = this.inbox?.read(input.snapshotId, path);
+        if (!snapshot) throw error;
+      }
+      return this.#deliver(snapshot, input.groups);
+    });
+  }
+  async #deliver(snapshot, groups) {
+    const { groupsSchema } = await import("../shared/contracts.js");
+    groups = groupsSchema.min(1).parse(groups);
+    if (groups.some((group) => !group.sections.length))
+      throw new Error("Each behavior needs at least one section.");
+    validateGroups(snapshot, groups);
+    const path = snapshot.repo.path;
+    const data = await this.reviews.load(path);
+    const comparison = this.reviews.comparison(data, snapshot);
+    const pass = comparison.passes.find(
+      (p) => p.id === comparison.activePassId,
+    );
+    const display = pass
+      ? this.reviews.getSnapshot(path, pass.snapshotId)
+      : snapshot;
+    if (
+      !data.snapshots[snapshot.version] ||
+      data.snapshots[snapshot.version].evicted ||
+      !pass
+    ) {
+      const previousActive = data.activeSnapshotId;
+      await this.reviews.capture(snapshot, !pass);
+      // Bootstrapping another comparison must preserve the user's last comparison.
+      if (!pass && previousActive) data.activeSnapshotId = previousActive;
+    }
+    const receipt = planReceipt(snapshot.version, groups);
+    const proposal = await this.reviews.action(display, "plan.propose", {
+      snapshotId: snapshot.version,
+      groups,
+      clientMutationId: receipt,
+    });
+    await this.#activity(
+      {
+        repo: snapshot.repo,
+        repositoryId: data.repository.id,
+        comparisonId: comparison.id,
+      },
+      "Plan ready",
+      proposal.id,
+      proposal.createdAt,
+    );
+    return proposal;
+  }
+  async #activity(snapshot, activity, id, at) {
+    const old = this.#registry.get(snapshot.repo.path);
+    const activityAt = Date.parse(at);
+    if (old?.activityId === id || old?.activityAt > activityAt) return;
+    this.#remember(snapshot, {
+      activity,
+      activityAt,
+      activityId: id,
+      activityComparisonId: snapshot.comparisonId,
+      unseen: true,
+      hidden: false,
+    });
+    try {
+      await this.persistIndex("checkout-activity", snapshot);
+    } catch (error) {
+      if (old) this.#registry.set(old.path, old);
+      else this.#registry.delete(snapshot.repo.path);
+      throw error;
+    }
+  }
+  agentFeedback(action, input) {
+    return this.run(async () => {
+      const path = await this.#agentPath(input);
+      const snapshot = await this.#savedSnapshot(path, input.comparisonId);
+      if (!snapshot)
+        throw cycleError(
+          404,
+          "UNKNOWN_COMPARISON",
+          "Open the originating comparison in Ordiff.",
+        );
+      const { repositoryPath, ...body } = input;
+      const result = await this.reviews.action(snapshot, action, body);
+      if (action === "batch.report" && result.length) {
+        await this.#activity(
+          snapshot,
+          "Feedback report",
+          result[0].id,
+          result[0].createdAt,
+        );
+      }
+      return result;
+    });
+  }
+  importHandoffs() {
+    return this.run(async () => {
+      const previousErrors = this.importErrors;
+      this.importErrors = [];
+      for (const { receipt, path } of this.inbox?.pending() || []) {
+        try {
+          const { snapshot, groups } = this.inbox.get(receipt);
+          await this.#deliver(snapshot, groups);
+          this.inbox.acknowledge(receipt);
+        } catch (error) {
+          this.importErrors.push({ receipt, path, message: error.message });
+        }
+      }
+      if (JSON.stringify(previousErrors) !== JSON.stringify(this.importErrors))
+        this.emit("revision", ++this.revision);
+      return this.importErrors;
+    });
   }
   run(operation) {
     const pending = this.#queue.then(operation);
@@ -65,23 +317,41 @@ export class WorkspaceStore extends EventEmitter {
           ),
           { code: "UNSUPPORTED_SCHEMA" },
         );
+      for (const repo of saved.repositories || this.#recent) {
+        if (
+          repo &&
+          typeof repo.path === "string" &&
+          isAbsolute(repo.path) &&
+          repo.name
+        )
+          this.#registry.set(repo.path, repo);
+      }
       if (!saved.path) return;
       if (saved.schemaVersion === 2 && saved.snapshotId) {
-        const fresh = await readRepository(
-          saved.path,
-          saved.comparison || { kind: "working-tree" },
-        );
-        await this.reviews.load(fresh.repo.path);
+        await this.reviews.load(saved.path);
         try {
           this.#current = this.reviews.getSnapshot(
-            fresh.repo.path,
+            saved.path,
             saved.snapshotId,
           );
-        } catch {
-          this.#current = fresh;
-          await this.reviews.capture(fresh, true);
+        } catch (error) {
+          if (![404, 410].includes(error.status)) throw error;
         }
-        await this.reviews.capture(fresh, false);
+        let fresh;
+        try {
+          fresh = await readRepository(saved.path, saved.comparison);
+        } catch (error) {
+          // A saved review can outlive its branch or checkout.
+          if (!this.#current) throw error;
+        }
+        if (fresh) {
+          await this.reviews.capture(fresh, !this.#current);
+          this.#current ||= fresh;
+        }
+        this.#remember(this.#current, {
+          comparison: this.#current.comparison,
+          comparisonId: this.#current.comparisonId,
+        });
         this.revision++;
         return;
       }
@@ -116,6 +386,14 @@ export class WorkspaceStore extends EventEmitter {
       const data = this.reviews.records.get(this.#current.repo.path);
       if (data) await this.reviews.persist(data);
     }
+    if (this.#current)
+      this.#remember(this.#current, {
+        comparison: this.#current.comparison,
+        comparisonId: this.#current.comparisonId,
+      });
+    await this.persistIndex();
+  }
+  async persistIndex(type, target) {
     if (this.stateFile) {
       await mkdir(dirname(this.stateFile), { recursive: true });
       const temporary = `${this.stateFile}.tmp`;
@@ -128,17 +406,51 @@ export class WorkspaceStore extends EventEmitter {
           path: this.#current?.repo.path || null,
           plan: this.#plan,
           recentRepositories: this.#recent,
+          repositories: [...this.#registry.values()],
         }),
         { mode: 0o600 },
       );
       await rename(temporary, this.stateFile);
     }
-    this.emit("revision", this.revision);
+    if (type) this.revision++;
+    this.emit("revision", this.revision, type, target);
   }
-  connect(path, { recordRecent = true } = {}) {
+  connect(
+    path,
+    { recordRecent = true, observedActivityId, comparisonId } = {},
+  ) {
     return this.run(async () => {
-      let snapshot = await readRepository(path);
-      snapshot = await this.reviews.capture(snapshot, true);
+      const root = this.#registry.has(path) ? path : await repositoryRoot(path);
+      let snapshot = await this.#savedSnapshot(
+        root,
+        comparisonId || this.#registry.get(root)?.comparisonId,
+      );
+      if (comparisonId && !snapshot)
+        throw cycleError(
+          404,
+          "UNKNOWN_COMPARISON",
+          "This comparison is unavailable.",
+        );
+      if (!snapshot)
+        snapshot = await this.reviews.capture(await readRepository(root), true);
+      const registry = new Map(this.#registry);
+      const entry = this.#registry.get(root);
+      const unseen =
+        !!entry?.unseen &&
+        ((observedActivityId !== undefined &&
+          observedActivityId !== entry.activityId) ||
+          (!!entry.activityComparisonId &&
+            entry.activityComparisonId !== snapshot.comparisonId));
+      const data = this.reviews.records.get(root);
+      const previousActive = data.activeSnapshotId;
+      data.activeSnapshotId = snapshot.version;
+      this.#remember(snapshot, {
+        viewedAt: Date.now(),
+        unseen,
+        hidden: false,
+        comparison: snapshot.comparison,
+        comparisonId: snapshot.comparisonId,
+      });
       const previous = {
         current: this.#current,
         plan: this.#plan,
@@ -162,8 +474,12 @@ export class WorkspaceStore extends EventEmitter {
       if (same && !recordRecent) return this.#current;
       this.revision++;
       try {
-        await this.persist();
+        if (previousActive !== snapshot.version)
+          await this.reviews.persist(data);
+        await this.persistIndex();
       } catch (error) {
+        data.activeSnapshotId = previousActive;
+        this.#registry = registry;
         this.#current = previous.current;
         this.#plan = previous.plan;
         this.#recent = previous.recent;
@@ -179,23 +495,28 @@ export class WorkspaceStore extends EventEmitter {
         throw new Error("Choose a recent repository to remove.");
       const previous = this.#recent;
       this.#recent = previous.filter((repo) => repo.path !== path);
-      if (this.#recent.length === previous.length) return;
+      const entry = this.#registry.get(path);
+      if (this.#recent.length === previous.length && (!entry || entry.hidden))
+        return;
+      if (entry) this.#registry.set(path, { ...entry, hidden: true });
       this.revision++;
       try {
-        await this.persist();
+        await this.persistIndex();
       } catch (error) {
         this.#recent = previous;
+        if (entry) this.#registry.set(path, entry);
         this.revision--;
         throw error;
       }
     });
   }
-  disconnect() {
+  disconnect(repositoryId) {
     return this.run(async () => {
+      this.checkSelection(repositoryId);
       this.#current = null;
       this.#plan = null;
       this.revision++;
-      await this.persist();
+      await this.persistIndex();
     });
   }
   async updateFromGit() {
@@ -215,11 +536,26 @@ export class WorkspaceStore extends EventEmitter {
     }
     return this.#current;
   }
-  refresh() {
-    return this.run(() => this.updateFromGit());
+  checkSelection(repositoryId, comparisonId) {
+    if (
+      (repositoryId && repositoryId !== this.#current?.repositoryId) ||
+      (comparisonId && comparisonId !== this.#current?.comparisonId)
+    )
+      throw cycleError(
+        409,
+        "WORKSPACE_CHANGED",
+        "The selected review changed. Reopen the intended checkout.",
+      );
   }
-  capture(source = "agent") {
+  refresh(repositoryId, comparisonId) {
+    return this.run(() => {
+      this.checkSelection(repositoryId, comparisonId);
+      return this.updateFromGit();
+    });
+  }
+  capture(source = "agent", expected) {
     return this.run(async () => {
+      this.checkSelection(expected?.repositoryId, expected?.comparisonId);
       if (!this.#current) throw new Error("Open a repository first.");
       const snapshot = await readRepository(
         this.#current.repo.path,
@@ -240,10 +576,13 @@ export class WorkspaceStore extends EventEmitter {
       return captured;
     });
   }
-  cycleAction(action, input) {
+  cycleAction(action, input, target) {
     return this.run(async () => {
-      if (!this.#current) throw new Error("Open a repository first.");
-      const result = await this.reviews.action(this.#current, action, input);
+      const snapshot = target
+        ? await this.#savedSnapshot(target.repo.path, target.comparisonId)
+        : this.#current;
+      if (!snapshot) throw new Error("Open a repository first.");
+      const result = await this.reviews.action(snapshot, action, input);
       if (
         !["batch.get", "batch.list", "history", "pass.changes"].includes(action)
       ) {
@@ -260,6 +599,7 @@ export class WorkspaceStore extends EventEmitter {
                   action === "general"
                 ? "feedback-updated"
                 : "review-updated",
+          snapshot,
         );
       }
       return result;
@@ -287,7 +627,7 @@ export class WorkspaceStore extends EventEmitter {
     return this.run(async () => {
       if (
         expectedPassId !== undefined &&
-        expectedPassId !== this.snapshot().cycle.pass.id
+        expectedPassId !== this.snapshot()?.cycle.pass.id
       )
         throw cycleError(409, "PASS_CHANGED", "The active pass changed.");
       const snapshot = this.reviews.getSnapshot(this.#current.repo.path, id);

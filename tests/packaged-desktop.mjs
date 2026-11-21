@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createInterface } from 'node:readline';
-import { mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, realpath, writeFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -61,4 +61,37 @@ test('signed bundle runs Git and MCP using only its own runtime and resources', 
   const unavailable = await rpc('tools/call', { name: 'get_review_context', arguments: {} });
   assert.equal(unavailable.isError, true);
   assert.match(unavailable.content[0].text, /Open Ordiff/);
+  const checkout = await realpath(await mkdtemp(join(tmpdir(), 'ordiff-headless-')));
+  t.after(() => rm(checkout, {recursive:true, force:true}));
+  execFileSync('/usr/bin/git', ['-C', checkout, 'init', '-q']);
+  await writeFile(join(checkout,'queued.ts'), 'export const queued = true;\n');
+  const call = async (name, args) => {
+    const result = await rpc('tools/call', {name, arguments:args});
+    assert.ok(!result.isError, result.content[0].text);
+    return JSON.parse(result.content[0].text);
+  };
+  const captured = await call('get_review_context', {repositoryPath:checkout, includeDiff:true});
+  const submission = {captureRef:captured.captureRef,
+    groups:[{title:'Offline review',sections:[captured.sections[0].id]}]};
+  const delivered = await call('submit_review_plan', submission);
+  assert.equal(delivered.status, 'queued');
+  assert.equal((await call('submit_review_plan', submission)).receipt, delivered.receipt);
+  const offlineFeedback = await rpc('tools/call', {name:'list_feedback_batches',arguments:{repositoryPath:checkout}});
+  assert.equal(offlineFeedback.isError, true);
+  await rm(checkout, {recursive:true});
+  const reopened = spawn(node, [join(runtime, 'server/desktop.js')], {
+    cwd:dir, env:{PATH:'/usr/bin:/bin', ORDIFF_PORT:new URL(url).port, ...config.env, ORDIFF_UI_DIR:join(runtime,'dist')},
+    stdio:['pipe','pipe','inherit'],
+  });
+  t.after(async () => { if (reopened.exitCode === null) { reopened.stdin.end(); await once(reopened,'exit'); } });
+  await once(createInterface({input:reopened.stdout}), 'line');
+  const restored = await (await fetch(url + '/api/workspace')).json();
+  assert.equal(restored.workspace.version, context.version);
+  assert.ok(restored.repositories.find(r => r.path === checkout && r.unseen));
+  const handoff = (await (await post('/api/repository', {path:checkout})).json()).workspace;
+  assert.equal(handoff.version, captured.version);
+  assert.equal(handoff.groups[0].title, 'Offline review');
+  assert.ok(handoff.sections[0].lines.some(line => line.text.includes('queued = true')));
+  assert.equal((await call('submit_review_plan', submission)).receipt, delivered.receipt);
+
 });
