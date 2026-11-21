@@ -960,33 +960,38 @@
     block-size: 17px;
   }
   .content-header {
+    container-type: inline-size;
     position: relative;
     margin-block-end: 20px;
   }
   .content-title-row {
+    display: grid;
+    gap: 5px;
+    overflow-wrap: anywhere;
+  }
+  .review-heading-meta {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    gap: var(--space-4);
-    min-block-size: 48px;
+    gap: var(--space-2);
   }
-  .content-title-row > div {
-    min-inline-size: 0;
-  }
-  .content-title-row .eyebrow {
-    margin-block-end: 4px;
+  .review-heading-meta .eyebrow {
+    font-size: 11px;
   }
   .content-title-row:has(+ .agent-context) {
-    padding-inline-end: 116px;
+    padding-inline-end: 10rem;
   }
   .scope-caption {
+    border-inline-start: 1px solid var(--border);
+    padding-inline-start: var(--space-2);
     color: var(--muted);
     font-size: 12px;
+    line-height: 1;
     white-space: nowrap;
-    margin-inline-start: auto;
   }
   .agent-context > summary {
     position: absolute;
-    inset: 8px 0 auto auto;
+    inset: 0 0 auto auto;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -1011,6 +1016,16 @@
   }
   .agent-context[open] > summary > .icon:last-child {
     transform: rotate(180deg);
+  }
+  @container (max-width: 34rem) {
+    .content-title-row:has(+ .agent-context) {
+      padding-inline-end: 0;
+    }
+    .agent-context > summary {
+      position: static;
+      inline-size: fit-content;
+      margin-block-start: 10px;
+    }
   }
   .context-body {
     margin-block-start: var(--space-4);
@@ -1853,18 +1868,8 @@
     #review-content {
       padding: 20px 12px 24px;
     }
-    .content-title-row {
-      align-items: flex-start;
-      gap: var(--space-2);
-    }
     .content-title-row h1 {
       font-size: 20px;
-    }
-    .scope-caption {
-      display: none;
-    }
-    .content-title-row:has(+ .agent-context) {
-      padding-inline-end: 104px;
     }
     .agent-context > summary {
       padding-inline: 7px;

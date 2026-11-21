@@ -124,7 +124,7 @@ export function ReviewContent({
     <>
       <section className="content-header">
         <div className="content-title-row">
-          <div>
+          <div className="review-heading-meta">
             <p className="eyebrow">
               {state.query.trim()
                 ? "SEARCH RESULTS"
@@ -132,13 +132,13 @@ export function ReviewContent({
                   ? "BEHAVIOR REVIEW"
                   : "WORKING CHANGES"}
             </p>
-            <h1>{title}</h1>
+            <span className="scope-caption">
+              {guided
+                ? `${group.sections.length} ${group.sections.length === 1 ? "step" : "steps"}`
+                : `${visible.length} ${visible.length === 1 ? "section" : "sections"}`}
+            </span>
           </div>
-          <span className="scope-caption">
-            {guided
-              ? `${group.sections.length} steps`
-              : `${visible.length} sections`}
-          </span>
+          <h1>{title}</h1>
         </div>
         {guided && (
           <details
