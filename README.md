@@ -2,7 +2,7 @@
 
 Review one behavior at a time, across files.
 
-Current release: **0.3.1**. See the [changelog](CHANGELOG.md) for features and release limits, and [versioning and releases](docs/releases.md) for the release process.
+Current release: **0.4.0**. See the [changelog](CHANGELOG.md) for features and release limits, and [versioning and releases](docs/releases.md) for the release process.
 
 Ordiff is a local Git review workspace. Open a checkout, inspect working changes, branch comparisons, or two commits, and optionally connect an agent through MCP to organize the changed hunks into an ordered reading path. Review decisions stay with you.
 

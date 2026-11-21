@@ -139,7 +139,7 @@ function tool(handler) {
 
 serveStdio(() => {
   const captures = new Map();
-  const server = new McpServer({ name: "ordiff", version: "0.3.1" });
+  const server = new McpServer({ name: "ordiff", version: "0.4.0" });
   server.registerTool(
     "get_review_context",
     {

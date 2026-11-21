@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.0 — 2026-11-21
+
+- Switch between repositories and worktrees from the toolbar dropdown or with ⌘/Ctrl+Shift+K. Each checkout resumes its review position and drafts. Press **?** for the in-app shortcut sheet.
+- Agents can deliver review plans to background checkouts. Handoffs queue locally while Ordiff is closed and import on launch. The switcher shows incoming activity and import failures.
+- The checkout registry is seeded from existing repository history. See [MCP integration](docs/mcp.md) for checkout-scoped handoffs and receipts.
+- Review header controls fit narrow windows, and diff controls and code spacing are more consistent.
+
 ## 0.3.1 — 2026-11-21
 
 - Long code lines wrap within unified diffs, split diffs, and the full-file view. The gutter shows each source line number once, beside its first visual line.
