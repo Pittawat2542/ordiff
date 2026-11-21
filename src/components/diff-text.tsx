@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { ReviewScope } from "../lib/review-scope";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import type {
   DiffLine,
   DiffSection,
@@ -37,6 +38,7 @@ export function DiffText({
   comments?: FeedbackComment[];
   revealAnchor?: FeedbackAnchor | null;
 }) {
+  const scope = useContext(ReviewScope);
   const [display, setDisplay] = useState<Display>(() => {
     try {
       return {
@@ -161,7 +163,7 @@ export function DiffText({
     limit = 200,
   ): Promise<TextPage> {
     const response = await fetch(
-      `/api/snapshots/${encodeURIComponent(version!)}/files/${encodeURIComponent(section.fileId!)}/text?side=${side}&start=${start}&limit=${limit}`,
+      `/api/snapshots/${encodeURIComponent(version!)}/files/${encodeURIComponent(section.fileId!)}/text?side=${side}&start=${start}&limit=${limit}${scope ? "&" + scope : ""}`,
     );
     const data = await response.json();
     if (!response.ok)

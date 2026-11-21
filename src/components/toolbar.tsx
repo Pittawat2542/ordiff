@@ -2,6 +2,8 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { ReviewController } from "../hooks/use-review";
 import { useExitPresence } from "../hooks/use-exit-presence";
 import { Icon } from "../icons";
+import type { RefObject } from "react";
+import { RepositorySwitcher } from "./repository-switcher";
 import { Brand } from "./brand";
 import { Button } from "./ui/button";
 import type { DialogKind } from "./dialogs";
@@ -9,6 +11,7 @@ import { TextDiffLink } from "./text-diff-link";
 
 export function Toolbar({
   review,
+  repositoryTrigger,
   navOpen,
   feedbackOpen,
   wide,
@@ -20,6 +23,7 @@ export function Toolbar({
   openDialog,
 }: {
   review: ReviewController;
+  repositoryTrigger: RefObject<HTMLButtonElement | null>;
   navOpen: boolean;
   feedbackOpen: boolean;
   wide: boolean;
@@ -129,6 +133,7 @@ export function Toolbar({
   }, [overflowOpen, setOverflowOpen]);
 
   const utilities = [
+    ...(!workspace && review.mcpConfig ? [{label: "Connect agent", icon: "sparkle", action: () => openDialog("mcp")}] : []),
     ...(workspace
       ? [
           {
@@ -202,17 +207,11 @@ export function Toolbar({
           className={workspace ? "toolbar-brand mobile-only" : "toolbar-brand"}
         />
         {workspace && (
-          <Button
-            variant="unstyled"
-            className="toolbar-repo repository-switcher"
-            title={workspace.repo.path}
-            aria-label={`Switch repository: ${workspace.repo.name}`}
-            aria-haspopup="dialog"
-            aria-controls="repository-dialog"
-            onClick={() => openDialog("repository")}
-          >
-            <span>{workspace.repo.name}</span><Icon name="down" />
-          </Button>
+          <RepositorySwitcher
+            review={review}
+            triggerRef={repositoryTrigger}
+            onManage={() => openDialog("repository")}
+          />
         )}
         <span className="toolbar-slash">/</span>
         <span className="toolbar-context">

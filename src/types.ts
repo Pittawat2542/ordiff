@@ -177,6 +177,15 @@ export interface RecentRepository {
   path: string;
 }
 
+export interface Checkout extends RecentRepository {
+  branch?: string;
+  activity?: string;
+  activityId?: string;
+  activityComparisonId?: string;
+  comparisonId?: string;
+  unseen?: boolean;
+}
+
 export interface DirectoryListing {
   path: string;
   parentPath: string | null;
@@ -192,6 +201,8 @@ export interface WorkspaceResponse {
   defaultPath?: string;
   mcpConfig?: McpConfig | null;
   recentRepositories?: RecentRepository[];
+  repositories?: Checkout[];
+  importErrors?: { receipt: string; path: string; message: string }[];
 }
 
 export type CycleDecision = z.infer<typeof decisionSchema>;

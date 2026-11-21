@@ -344,6 +344,7 @@
     }
   }
   @media (max-width: 600px) {
+    .repository-switcher { min-block-size: 44px; }
     .repository-chooser
       :is(.repository-path-open, .repo-input-wrap input, .recent-search input) {
       min-block-size: 44px;
@@ -367,5 +368,90 @@
     :is(.repo-input-wrap, .recent-search)
     input:focus-visible {
     outline: none;
+  }
+}
+
+@layer components {
+  .repo-update-count {
+    flex-shrink: 0;
+    border-radius: 1em;
+    padding: 1px 6px;
+    background: var(--text);
+    color: var(--surface);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .checkout-switcher {
+    display: flex;
+    flex-flow: row wrap;
+    align-items: center;
+    gap: 8px;
+  }
+  .checkout-switcher .recent-repositories {
+    width: 100%;
+    margin: 0 0 4px;
+    padding: 0;
+    border: 0;
+  }
+  .checkout-switcher .recent-list {
+    max-block-size: min(45vh, 360px);
+    overflow-y: auto;
+  }
+  .checkout-switcher .browse-folders { width: auto; }
+  .checkout-switcher :is(.connect-form, .chooser-footer, .folder-browser, .handoff-error) { width: 100%; }
+  .recent-copy .unseen-activity { color: var(--text); font-weight: 600; }
+  .repository-dialog:modal, .repository-dialog::backdrop { overscroll-behavior: contain; }
+  .repository-dialog::backdrop { overflow: hidden; }
+}
+
+@layer components {
+  .repository-switcher[aria-expanded="true"] {
+    background: var(--subtle);
+  }
+  .repository-switcher[aria-expanded="true"] > .icon {
+    transform: rotate(180deg);
+  }
+  .repository-popover {
+    --panel-width: min(350px, calc(100vw - 16px));
+    position: fixed;
+    inset: auto;
+    top: calc(var(--repo-bottom) + 6px);
+    left: clamp(8px, var(--repo-left), 100vw - var(--panel-width) - 8px);
+    z-index: 10;
+    inline-size: var(--panel-width);
+    max-block-size: calc(100dvh - var(--repo-bottom) - 14px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin: 0;
+    padding: 10px;
+    border: 1px solid var(--chrome-border);
+    border-radius: var(--radius-content);
+    color: var(--text);
+    background: var(--chrome-solid);
+    box-shadow: var(--shadow-floating);
+  }
+  @supports (top: anchor(bottom)) {
+    .repository-switcher {
+      anchor-name: --ordiff-repository;
+    }
+    .repository-popover:popover-open {
+      position-anchor: --ordiff-repository;
+      top: calc(anchor(bottom) + 6px);
+      left: clamp(8px, anchor(left), 100vw - var(--panel-width) - 8px);
+      bottom: auto;
+      max-block-size: calc(100dvh - 80px);
+    }
+  }
+  .quick-switch {
+    margin: 0;
+    gap: 0;
+  }
+  .quick-switch > .toolbar-menu-action {
+    border-block-start: 1px solid var(--hairline);
+    border-radius: 0;
+    color: var(--secondary);
+  }
+  .quick-switch .recent-list {
+    overscroll-behavior: contain;
   }
 }

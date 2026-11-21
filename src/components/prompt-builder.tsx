@@ -288,7 +288,7 @@ export function PromptBuilder({
                   })
                   .then((batch) => {
                     setHandoff(
-                      `Use Ordiff get_feedback_batch with batchId "${batch.id}". Inspect the captured references and current code, apply the requested changes, then report_feedback_outcomes. Leave resolution to me.`,
+                      `Use Ordiff get_feedback_batch with repositoryId "${workspace.repositoryId}", comparisonId "${workspace.comparisonId}", and batchId "${batch.id}". Inspect the captured references and current code, apply the requested changes, then use the same identifiers with report_feedback_outcomes. Leave resolution to me.`,
                     );
                     setMessage(
                       "Batch published. Future comment edits will not change it.",

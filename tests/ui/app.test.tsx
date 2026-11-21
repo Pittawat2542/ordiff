@@ -126,12 +126,23 @@ test("compact toolbar exposes the utility link inside More", async () => {
   ).toHaveAttribute("target", "_blank");
 });
 
+test("question mark opens the shortcut reference for reviewing and switching repositories", async () => {
+  await sample();
+  fireEvent.keyDown(document.body, { key: "?" });
+  const help = within(screen.getByRole("dialog", { name: "Keyboard shortcuts" }));
+  expect(help.getByRole("row", { name: /Switch repository.*Shift.*K/ })).toBeVisible();
+  expect(help.getByRole("row", { name: /Extend.*line selection.*Shift/ })).toBeVisible();
+  expect(help.getByRole("row", { name: /Open.*match.*Enter/ })).toBeVisible();
+  expect(help.getByRole("row", { name: /Close the switcher.*Esc/ })).toBeVisible();
+  expect(help.getByText(/Ctrl on Windows and Linux/)).toBeVisible();
+});
+
 test("help keeps its contents during exit instead of collapsing to an empty sheet", async () => {
   await sample();
   fireEvent.click(
     screen.getByRole("button", { name: "Help and keyboard shortcuts" }),
   );
-  const dialog = screen.getByRole("dialog", { name: "A clearer review." });
+  const dialog = screen.getByRole("dialog", { name: "Keyboard shortcuts" });
   let finish!: () => void;
   const finished = new Promise<void>((resolve) => {
     finish = resolve;
@@ -141,7 +152,7 @@ test("help keeps its contents during exit instead of collapsing to an empty shee
   });
   fireEvent.click(screen.getByRole("button", { name: "Close help" }));
   expect(
-    within(dialog).getByRole("heading", { name: "A clearer review." }),
+    within(dialog).getByRole("heading", { name: "Keyboard shortcuts" }),
   ).toBeVisible();
   await act(async () => {
     finish();
@@ -240,7 +251,7 @@ test("More opens help and releases its popover before the dialog receives focus"
     screen.getByRole("button", { name: "Help and keyboard shortcuts" }),
   );
   expect(
-    screen.getByRole("dialog", { name: "A clearer review." }),
+    screen.getByRole("dialog", { name: "Keyboard shortcuts" }),
   ).toBeVisible();
   expect(screen.getByRole("button", { name: "More actions" })).toHaveAttribute(
     "aria-expanded",

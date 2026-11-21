@@ -5,6 +5,7 @@ import { createReviewModel } from "../review";
 import { useFeedback } from "./use-feedback";
 import { isPageHidden } from "../lib/visibility";
 import type {
+  Checkout,
   McpConfig,
   RecentRepository,
   ReviewAction,
@@ -31,8 +32,11 @@ type Session = {
     >;
   } | null;
 };
-const keyFor = (workspace: Workspace | null, demoMode = false) =>
-  `ordiff.review.v2.${demoMode ? "demo" : workspace?.repo.path || "none"}`;
+const keyFor = (workspace: Workspace | null, demoMode = false) => {
+  if (!demoMode && workspace?.comparisonId && workspace.cycle?.pass.id)
+    return `ordiff.navigation.${workspace.comparisonId}.${workspace.cycle.pass.id}`;
+  return `ordiff.review.v2.${demoMode ? "demo" : workspace?.repo.path || "none"}`;
+};
 const messageOf = (error: unknown) =>
   error instanceof Error
     ? error.message
@@ -97,6 +101,15 @@ export function useReview() {
   const [recentRepositories, setRecentRepositories] = useState<
     RecentRepository[]
   >([]);
+  const [repositories, setRepositories] = useState<Checkout[]>();
+  const [importErrors, setImportErrors] = useState<
+    NonNullable<WorkspaceResponse["importErrors"]>
+  >([]);
+  const updateRegistry = useCallback((data: WorkspaceResponse) => {
+    if (data.repositories) setRepositories(data.repositories);
+    if (data.importErrors) setImportErrors(data.importErrors);
+    if (data.recentRepositories) setRecentRepositories(data.recentRepositories);
+  }, []);
   const [mcpConfig, setMcpConfig] = useState<McpConfig | null>(null);
   const [serviceError, setServiceError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -124,7 +137,10 @@ export function useReview() {
       let saved: unknown;
       try {
         saved = JSON.parse(
-          localStorage.getItem(keyFor(next, fromDemo)) || "null",
+          localStorage.getItem(keyFor(next, fromDemo)) ||
+            (next?.cycle &&
+              localStorage.getItem(`ordiff.review.v2.${next.repo.path}`)) ||
+            "null",
         );
       } catch {
         /* Invalid or unavailable saves start fresh. */
@@ -198,6 +214,7 @@ export function useReview() {
     const data = await cycleRequest<T>(workspace, action, input);
     if (current.current.workspace?.comparisonId === workspace.comparisonId) {
       revision.current = data.revision;
+      updateRegistry(data);
       applyWorkspace(data.workspace);
     }
     return data.result;
@@ -342,8 +359,7 @@ export function useReview() {
         if (data.defaultPath) setDefaultPath(data.defaultPath);
         if (data.mcpConfig) setMcpConfig(data.mcpConfig);
         if (started !== generation.current) return;
-        if (data.recentRepositories)
-          setRecentRepositories(data.recentRepositories);
+        updateRegistry(data);
         setServiceError("");
         if (data.unchanged) return;
         revision.current = data.revision;
@@ -390,6 +406,22 @@ export function useReview() {
         delay = 1000;
         try {
           const next = JSON.parse(event.data);
+          const displayed = current.current.workspace;
+          const background =
+            next.repositoryId &&
+            (next.repositoryId !== displayed?.repositoryId ||
+              next.comparisonId !== displayed?.comparisonId);
+          if (
+            background &&
+            next.type && next.type !== "workspace-updated" &&
+            next.revision === revision.current + 1 &&
+            !pending &&
+            !busyRef.current
+          ) {
+            if (next.repositories) setRepositories(next.repositories);
+            revision.current = next.revision;
+            return;
+          }
           if (
             Number.isInteger(next.revision) &&
             next.revision !== revision.current
@@ -443,7 +475,7 @@ export function useReview() {
       window.removeEventListener("ordiff:visibility", visibilityChanged);
       syncConnection.current = () => {};
     };
-  }, [announce, applyWorkspace]);
+  }, [announce, applyWorkspace, updateRegistry]);
   useEffect(() => {
     syncConnection.current();
   }, [session.mode, busy]);
@@ -605,16 +637,23 @@ export function useReview() {
       };
     });
   }
-  async function connectRepository(path: string): Promise<boolean> {
+  async function connectRepository(
+    path: string,
+    observedActivityId?: string | null,
+    comparisonId?: string,
+  ): Promise<boolean> {
     if (busyRef.current) return false;
     busyRef.current = true;
     setBusy(true);
     generation.current++;
     try {
-      const data = await api("repository", { path: path.trim() });
+      const data = await api("repository", {
+        path: path.trim(),
+        observedActivityId,
+        comparisonId,
+      });
       revision.current = data.revision;
-      if (data.recentRepositories)
-        setRecentRepositories(data.recentRepositories);
+      updateRegistry(data);
       applyWorkspace(data.workspace);
       return true;
     } finally {
@@ -630,8 +669,7 @@ export function useReview() {
     try {
       const data = await api("recent-repositories/remove", { path });
       revision.current = data.revision;
-      if (data.recentRepositories)
-        setRecentRepositories(data.recentRepositories);
+      updateRegistry(data);
       return true;
     } finally {
       busyRef.current = false;
@@ -650,10 +688,12 @@ export function useReview() {
     setBusy(true);
     generation.current++;
     try {
-      const data = await api("refresh", {});
+      const data = await api("refresh", {
+        repositoryId: session.workspace?.repositoryId,
+        comparisonId: session.workspace?.comparisonId,
+      });
       revision.current = data.revision;
-      if (data.recentRepositories)
-        setRecentRepositories(data.recentRepositories);
+      updateRegistry(data);
       const changed =
         current.current.workspace?.version !== data.workspace?.version;
       applyWorkspace(data.workspace);
@@ -676,10 +716,11 @@ export function useReview() {
     generation.current++;
     try {
       if (session.mode === "git") {
-        const data = await api("disconnect", {});
+        const data = await api("disconnect", {
+          repositoryId: session.workspace?.repositoryId,
+        });
         revision.current = data.revision;
-        if (data.recentRepositories)
-          setRecentRepositories(data.recentRepositories);
+        updateRegistry(data);
       }
       applyWorkspace(null);
       return true;
@@ -767,6 +808,11 @@ export function useReview() {
       };
     });
   }
+  const requestGeneration = generation.current;
+  function applyReviewResult(next: Workspace | null) {
+    if (next && generation.current === requestGeneration &&
+        next.repo.path === current.current.workspace?.repo.path) applyWorkspace(next);
+  }
   return {
     ...session,
     state: session.review,
@@ -778,6 +824,9 @@ export function useReview() {
     storageAvailable,
     defaultPath,
     recentRepositories,
+    repositories,
+    importErrors,
+    retryImports: async () => updateRegistry(await api("handoffs/import", {})),
     mcpConfig,
     serviceError,
     busy,
@@ -787,7 +836,7 @@ export function useReview() {
     markAndContinue,
     deferAndContinue,
     cycleAction,
-    applyWorkspace,
+    applyWorkspace: applyReviewResult,
     canUndo: !!session.undo,
     undoLastMark,
     connectRepository,

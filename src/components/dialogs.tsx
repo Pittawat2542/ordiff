@@ -105,6 +105,29 @@ const titles = {
   help: "help-title",
   summary: "summary-title",
 };
+const shortcutGroups = [
+  {
+    title: "During review",
+    rows: [
+      ["Switch repository", "⌘ + Shift + K"],
+      ["Search changes in this repository", "⌘ + K"],
+      ["Next / previous section", "J", "K"],
+      ["Mark reviewed and continue", "R"],
+      ["Defer and continue", "D"],
+      ["Extend a line selection from the diff gutter", "Shift + ↑", "Shift + ↓"],
+      ["Show keyboard shortcuts", "?"],
+    ],
+  },
+  {
+    title: "In the repository switcher",
+    rows: [
+      ["Previous / next match", "↑", "↓"],
+      ["Open the selected or first match", "Enter"],
+      ["Close the switcher", "Esc"],
+    ],
+  },
+] as const;
+
 export function AppDialog({
   kind,
   close,
@@ -153,9 +176,11 @@ export function AppDialog({
           <div className="dialog-heading flex items-center justify-between">
             {displayKind === "repository" ? (
               <h2 id="repository-title">Open a repository</h2>
+            ) : displayKind === "help" ? (
+              <h2 id="help-title">Keyboard shortcuts</h2>
             ) : (
               <span className="dialog-emblem">
-                {displayKind === "help" ? "?" : <Icon name={icon} />}
+                <Icon name={icon} />
               </span>
             )}
             <Button variant="ghost" aria-label={closeLabel} onClick={close}>
@@ -202,44 +227,42 @@ export function AppDialog({
           )}
           {displayKind === "help" && (
             <>
-              <h2 id="help-title">A clearer review.</h2>
-              <p className="dialog-intro">
-                Open a local repository, review the changes, and add file or
-                section comments. Build a prompt from selected feedback and
-                general instructions. Connect an agent through MCP whenever you
-                want a guided reading path.
-              </p>
-              <div className="shortcut-list">
-                <div>
-                  <span>Search all changes</span>
-                  <kbd>⌘ / Ctrl K</kbd>
-                </div>
-                <div>
-                  <span>Next / previous section</span>
-                  <span>
-                    <kbd>J</kbd>
-                    <kbd>K</kbd>
-                  </span>
-                </div>
-                <div>
-                  <span>Review or continue to the next pending section</span>
-                  <kbd>R</kbd>
-                </div>
-                <div>
-                  <span>Defer and continue</span><kbd>D</kbd>
-                </div><div>
-                  <span>Open help</span>
-                  <kbd>?</kbd>
-                </div>
-              </div>
-              <div className="repository-access-note">
-                <strong>Your repository stays yours.</strong>
-                <p>
-                  Git access is read-only. Use Refresh to pick up file edits.
-                  Review progress and feedback stay on this computer; your repo
-                  choice and agent plan stay locally in Ordiff.
+              <p className="dialog-intro">Use ⌘ on Mac and Ctrl on Windows and Linux.</p>
+              {shortcutGroups.map(({ title, rows }) => (
+                <table className="shortcut-list" key={title}>
+                  <caption>{title}</caption>
+                  <tbody>
+                    {rows.map(([action, ...keys]) => (
+                      <tr key={action}>
+                        <th scope="row">{action}</th>
+                        <td>
+                          {keys.map((key, index) => (
+                            <span key={key}>{index > 0 && " / "}<kbd>{key}</kbd></span>
+                          ))}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ))}
+              <p className="shortcut-hint">Type a repository name, branch, or path to filter matches.</p>
+              <details className="help-about">
+                <summary>About reviews</summary>
+                <p className="dialog-intro">
+                  Open a local repository, review the changes, and add file or
+                  section comments. Build a prompt from selected feedback and
+                  general instructions. Connect an agent through MCP whenever you
+                  want a guided reading path.
                 </p>
-              </div>
+                <div className="repository-access-note">
+                  <strong>Your repository stays yours.</strong>
+                  <p>
+                    Git access is read-only. Use Refresh to pick up file edits.
+                    Review progress and feedback stay on this computer; your repo
+                    choice and agent plan stay locally in Ordiff.
+                  </p>
+                </div>
+              </details>
             </>
           )}
         </>
@@ -254,7 +277,7 @@ function McpSetup({
   review: ReviewController;
   openRepository: () => void;
 }) {
-  const real = review.mode === "git";
+  const real = review.mode === "git" || !!review.mcpConfig;
   const [copied, setCopied] = useState(false);
   const configRef = useRef<HTMLTextAreaElement>(null);
   return (
@@ -262,13 +285,13 @@ function McpSetup({
       <h2 id="mcp-title">Give your agent a way in.</h2>
       <p className="dialog-intro">
         {real
-          ? "Add Ordiff to your MCP client. Your agent can read this diff and propose a behavior-based reading path."
+          ? "Use one local MCP configuration for all your checkouts."
           : "Open a local repository first. The sample review is a preview of the experience."}
       </p>
       {real ? (
         <>
           <ol className="mcp-steps">
-            <li>Keep Ordiff running.</li>
+            <li>Give the agent the path to its checkout.</li>
             <li>Add this local server to your MCP client.</li>
             <li>Ask your agent to read the diff and send a review plan.</li>
           </ol>
@@ -308,8 +331,7 @@ function McpSetup({
             <span>Send ordered groups and explanations.</span>
           </div>
           <p className="mcp-footnote">
-            Plans must match the current diff. These tools cannot mark code
-            reviewed or change your Git files.
+            Ordiff can receive a captured plan while closed. Open the app to read published feedback and report outcomes.
           </p>
         </>
       ) : (

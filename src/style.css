@@ -1677,22 +1677,45 @@
     line-height: 1.7;
     color: var(--muted);
   }
+  #help-title {
+    margin: 0;
+  }
   .shortcut-list {
-    margin-block: 24px;
-    padding-block: var(--space-2);
-    border-block: 1px solid var(--border);
-  }
-  .shortcut-list > div {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    gap: var(--space-3);
-    padding-block: 10px;
+    width: 100%;
+    border-collapse: collapse;
+    margin-block-start: 18px;
     font-size: 13px;
+    line-height: 1.45;
   }
-  .shortcut-list > div > span:last-child {
-    display: flex;
-    gap: 4px;
+  .shortcut-list caption {
+    text-align: start;
+    color: var(--strong);
+    font-weight: 600;
+    padding-block-end: 5px;
+  }
+  .shortcut-list :is(th, td) {
+    padding-block: 5px;
+    border-block-start: 1px solid var(--border);
+  }
+  .shortcut-list th {
+    text-align: start;
+    font-weight: 400;
+    padding-inline-end: 10px;
+  }
+  .shortcut-list td {
+    text-align: end;
+    color: var(--muted);
+  }
+  .shortcut-list kbd {
+    white-space: nowrap;
+  }
+  .shortcut-hint, .help-about {
+    margin-block-start: 10px;
+    font-size: 13px;
+    color: var(--secondary);
+  }
+  .help-about summary {
+    cursor: pointer;
   }
   .repository-access-note {
     font-size: 13px;
@@ -2008,7 +2031,7 @@
     }
   }
   @media (max-width: 400px) {
-    .toolbar-repo {
+    .toolbar-brand.mobile-only {
       display: none;
     }
     .toolbar-location {

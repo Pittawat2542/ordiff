@@ -10,9 +10,9 @@ class TestEventSource {
   constructor(public url: string) { TestEventSource.clients.add(this); }
   close() { TestEventSource.clients.delete(this); }
 }
-export function emitRevision(revision: number) {
+export function emitRevision(revision: number, resource: Record<string, unknown> = {}) {
   for (const client of TestEventSource.clients)
-    client.onmessage?.(new MessageEvent("message", { data: JSON.stringify({ revision }) }));
+    client.onmessage?.(new MessageEvent("message", { data: JSON.stringify({ revision, ...resource }) }));
 }
 beforeEach(() => { vi.stubGlobal("EventSource", TestEventSource); });
 

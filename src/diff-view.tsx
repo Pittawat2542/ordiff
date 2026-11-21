@@ -1,4 +1,5 @@
-import { lazy, memo, Suspense, useState } from "react";
+import { ReviewScope } from "./lib/review-scope";
+import { lazy, memo, Suspense, useContext, useState } from "react";
 import {
   fileUrl,
   formatSize,
@@ -26,6 +27,7 @@ interface DiffViewProps {
   expanded?: boolean;
   onToggleContext?: () => void;
   version?: string;
+  scope?: string;
   onAddComment?: (scope: "file" | "section", anchor?: FeedbackAnchor) => void;
   query?: string;
   comments?: FeedbackComment[];
@@ -33,10 +35,12 @@ interface DiffViewProps {
 }
 export const DiffView = memo(function DiffView(props: DiffViewProps) {
   return (
+    <ReviewScope.Provider value={props.scope || ""}>
     <DiffPanel
       key={`${props.section.id}:${props.version || "sample"}`}
       {...props}
     />
+    </ReviewScope.Provider>
   );
 });
 function DiffPanel({
@@ -49,6 +53,7 @@ function DiffPanel({
   comments,
   revealAnchor,
 }: DiffViewProps) {
+  const scope = useContext(ReviewScope);
   const kind = previewKind(section);
   const canPreview = kind !== "unsupported" || section.binary;
   const compareVersions = Boolean(
@@ -65,7 +70,7 @@ function DiffPanel({
   const revision = section.file?.[side];
   const download =
     section.file && version && revision && revision.size <= MAX_PREVIEW_BYTES
-      ? fileUrl(section.id, version, side)
+      ? fileUrl(section.id, version, side, undefined, undefined, scope)
       : undefined;
   const split = section.path.lastIndexOf("/");
   const allLines = section.lines || [];
@@ -252,6 +257,7 @@ function DiffPanel({
 }
 
 function FileComparison({ section, version }: DiffViewProps) {
+  const scope = useContext(ReviewScope);
   return (
     <div className="file-comparison" role="group" aria-label="File comparison">
       <div className="file-comparison-grid">
@@ -270,7 +276,7 @@ function FileComparison({ section, version }: DiffViewProps) {
                 {version && revision.size <= MAX_PREVIEW_BYTES && (
                   <a
                     className="file-download"
-                    href={fileUrl(section.id, version, side)}
+                    href={fileUrl(section.id, version, side, undefined, undefined, scope)}
                     download={section.path.split("/").at(-1)}
                     aria-label={
                       original

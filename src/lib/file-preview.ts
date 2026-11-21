@@ -13,11 +13,12 @@ export function fileUrl(
   side: "before" | "after",
   format?: string,
   resource?: string,
+  scope = "",
 ) {
   const query = new URLSearchParams({ sectionId, version, side });
   if (format) query.set("format", format);
   if (resource) query.set("resource", resource);
-  return `/api/file?${query}`;
+  return `/api/file?${query}${scope ? "&" + scope : ""}`;
 }
 export function formatSize(size: number) {
   if (size < 1024) return `${size} B`;

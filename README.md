@@ -43,7 +43,7 @@ Ordiff reads the combined changes against HEAD: staged, unstaged, and non-ignore
 
 **Browse folders** opens the native macOS folder picker in the desktop app. In the browser, navigate local folders with breadcrumbs, **Up**, **Home**, or a folder path, then choose **Open this folder**. Enable **Show hidden folders** when needed. Selecting a subfolder opens its Git repository root; Git worktrees are supported.
 
-The welcome screen and repository dialog show the 10 most recently opened repositories. Search by name or full path, select a row to reopen it, or use its remove button to forget the entry. Removing an entry keeps any current review open. Click the repository name in the toolbar, or **Repository settings** in the navigation panel, to switch repositories. A cancelled picker or failed connection preserves your current review.
+Click the repository name or press **⌘/Ctrl+Shift+K** to open the dropdown beneath the repository name. Search by name, branch, or path, then use the arrow keys and Enter to open a result. Each worktree has its own entry. A badge counts checkouts with updates, and incoming plans and feedback reports appear first in the switcher. Opening a row resumes its comparison, review pass, hunk, and draft. **Open update** opens a newer captured snapshot. Choose **Manage repositories…** to add a checkout or remove a recent entry.
 
 ## Review changes
 
@@ -98,13 +98,13 @@ Comparison is case-sensitive and includes whitespace changes. Line endings norma
 
 ## Connect an agent
 
-Select **Connect agent** for the exact configuration for your checkout. The local stdio MCP server captures independent agent snapshots, proposes behavior plans, reads explicitly published feedback batches, and records outcome reports. Agents cannot resolve comments or mark code reviewed.
+Use **Connect agent** to copy one MCP configuration for all your checkouts. Pass the checkout path when capturing and the returned capture reference when submitting. Agents can deliver plans to a different checkout, including while Ordiff is closed. The local stdio MCP server captures independent agent snapshots, proposes behavior plans, reads explicitly published feedback batches, and records outcome reports. Agents cannot resolve comments or mark code reviewed.
 
 See [MCP setup and tool behavior](docs/mcp.md) for configuration, limits, and the plan lifecycle.
 
 ## Local state
 
-Repository selection, recent repository history, and the current agent plan are saved in the app checkout's ignored `.ordiff/workspace.json` during browser development, or `~/Library/Application Support/Ordiff/workspace.json` in the desktop app. History belongs to that local backend; desktop and browser development keep separate histories. Review progress, feedback, checklists, and appearance are saved in this browser or the desktop app's persistent WebView. **Close repository** returns to onboarding and clears the server's active repository and plan; recent history and saved feedback remain available when you reopen a repository. A failed connection preserves the current workspace.
+The checkout registry and last selection live in `.ordiff/workspace.json` during development and `~/Library/Application Support/Ordiff/workspace.json` on macOS. The adjacent `reviews/` directory stores comparisons, passes, and published feedback. The `handoffs/` directory holds queued deliveries. Navigation, drafts, and appearance use the browser or desktop WebView’s local storage. **Close repository** returns to the chooser. You can reopen a checkout from its saved review.
 
 Review progress belongs to a comparison and review pass. Activating changed contents starts a fresh pass while retaining feedback and history; unchanged refreshes preserve progress. Agent plans provide a reading order, and marking a section reviewed records progress rather than certifying correctness.
 

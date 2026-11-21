@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import type { ReviewController } from "../hooks/use-review";
-import type { DirectoryListing } from "../types";
+import type { Checkout, DirectoryListing } from "../types";
 import { Icon } from "../icons";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -38,12 +38,14 @@ export function RepositoryChooser({
   active = true,
   onConnected,
   footerAction,
+  onManage,
 }: {
   review: ReviewController;
   inDialog?: boolean;
   active?: boolean;
   onConnected?: () => void;
   footerAction?: ReactNode;
+  onManage?: () => void;
 }) {
   const id = useId();
   const initialPath =
@@ -57,6 +59,9 @@ export function RepositoryChooser({
   const [pending, setPending] = useState<
     "opening" | "picking" | "removing" | null
   >(null);
+  const [enterPath, setEnterPath] = useState(false);
+  const quickSwitch = !!onManage;
+  const switcher = quickSwitch || !!review.repositories?.length;
   const [browsing, setBrowsing] = useState(false);
   const [directory, setDirectory] = useState<DirectoryListing | null>(null);
   const [browsePath, setBrowsePath] = useState("");
@@ -95,9 +100,13 @@ export function RepositoryChooser({
     if (!active) return;
     if (browsing) folderInput.current?.focus();
     else if (wasBrowsing.current) browseButton.current?.focus();
-    else if (inDialog) browseButton.current?.focus();
+    else if (inDialog || quickSwitch)
+      (searchInput.current && switcher
+        ? searchInput.current
+        : browseButton.current
+      )?.focus();
     wasBrowsing.current = browsing;
-  }, [browsing, active, inDialog]);
+  }, [browsing, active, inDialog, switcher, quickSwitch]);
   useEffect(() => {
     if (!pending && active && focusAfterRemoval.current) {
       focusAfterRemoval.current = false;
@@ -127,13 +136,25 @@ export function RepositoryChooser({
       }
     }
   }
-  async function connect(selected: string, current: () => boolean) {
+  async function connect(
+    selected: string,
+    current: () => boolean,
+    comparisonId?: string,
+  ) {
     setPath(selected);
-    if ((await review.connectRepository(selected)) && current())
+    if (
+      (await review.connectRepository(
+        selected,
+        review.repositories?.find((repo) => repo.path === selected)
+          ?.activityId ?? null,
+        comparisonId,
+      )) &&
+      current()
+    )
       onConnected?.();
   }
-  const open = (selected: string) =>
-    perform("opening", (current) => connect(selected, current));
+  const open = (selected: string, comparisonId?: string) =>
+    perform("opening", (current) => connect(selected, current, comparisonId));
 
   async function navigate(
     target: string,
@@ -185,13 +206,200 @@ export function RepositoryChooser({
       void navigate(start, showHidden, true);
     }
   }
-  const filtered = review.recentRepositories.filter((repo) =>
-    `${repo.name}\n${repo.path}`
+  const repositories: Checkout[] =
+    review.repositories ?? review.recentRepositories;
+  const filtered = repositories.filter((repo) =>
+    `${repo.name}\n${repo.path}\n${repo.branch || ""}`
       .toLowerCase()
       .includes(query.trim().toLowerCase()),
   );
+  function navigateResults(event: React.KeyboardEvent<HTMLElement>) {
+    if (
+      !switcher ||
+      event.nativeEvent.isComposing ||
+      event.nativeEvent.keyCode === 229
+    )
+      return;
+    const buttons = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        ".recent-repository",
+      ),
+    );
+    if (!buttons.length) return;
+    if (event.key === "Enter" && event.target === searchInput.current) {
+      event.preventDefault();
+      buttons[0].click();
+    } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const index = buttons.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
+      event.preventDefault();
+      const direction = event.key === "ArrowDown" ? 1 : -1;
+      const start = index < 0 && direction < 0 ? 0 : index;
+      buttons[(start + direction + buttons.length) % buttons.length].focus();
+    }
+  }
+  const repositoryList = (
+    <section
+      onKeyDown={navigateResults}
+      className="recent-repositories"
+      aria-labelledby={`${id}-recent`}
+    >
+      <div className="recent-heading">
+        <h3 id={`${id}-recent`}>
+          {switcher ? "Repositories" : "Recent repositories"}
+        </h3>
+        {repositories.length > 0 && (
+          <label className="recent-search" htmlFor={`${id}-search`}>
+            <Icon name="search" />
+            <Input
+              ref={searchInput}
+              id={`${id}-search`}
+              type="search"
+              aria-label={
+                switcher ? "Search repositories" : "Search recent repositories"
+              }
+              placeholder="Filter…"
+              value={query}
+              autoComplete="off"
+              autoCapitalize="none"
+              spellCheck={false}
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </label>
+        )}
+      </div>
+      <ul className="recent-list">
+        {filtered.map((repo) => {
+          const current =
+            review.mode === "git" && review.workspace?.repo.path === repo.path;
+          return (
+            <li key={repo.path}>
+              <Button
+                variant="unstyled"
+                className="recent-repository"
+                disabled={disabled}
+                aria-label={`Open ${repo.name} ${repo.path}${repo.activity ? ", " + repo.activity : ""}`}
+                onClick={() => void open(repo.path)}
+              >
+                <Icon name="repo" />
+                <span className="recent-copy">
+                  <strong>{repo.name}</strong>
+                  <small>
+                    {switcher
+                      ? [
+                          repo.branch,
+                          repositories.some(
+                            (r) => r.path !== repo.path && r.name === repo.name,
+                          )
+                            ? repo.path
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || repo.path
+                      : repo.path}
+                  </small>
+                  {repo.activity && (
+                    <small className={repo.unseen ? "unseen-activity" : ""}>
+                      {repo.activity}
+                    </small>
+                  )}
+                </span>
+                {current ? (
+                  <span className="current-repository">Current</span>
+                ) : (
+                  <Icon name="arrow" />
+                )}
+              </Button>
+              {repo.activityComparisonId &&
+                repo.comparisonId &&
+                repo.activityComparisonId !== repo.comparisonId && (
+                  <Button
+                    variant="link"
+                    disabled={disabled}
+                    onClick={() =>
+                      void open(repo.path, repo.activityComparisonId)
+                    }
+                  >
+                    Open update
+                  </Button>
+                )}
+              {!quickSwitch && (
+                <Button
+                  variant="ghost"
+                  disabled={disabled}
+                  aria-label={`Remove ${repo.name} ${repo.path} from recent repositories`}
+                  title="Remove from recent repositories"
+                  onClick={() =>
+                    void perform("removing", async (current) => {
+                      if (
+                        (await review.removeRecentRepository(repo.path)) &&
+                        current()
+                      )
+                        focusAfterRemoval.current = true;
+                    })
+                  }
+                >
+                  <Icon name="close" />
+                </Button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {!filtered.length && (
+        <p className="chooser-empty">
+          {query.trim() && repositories.length
+            ? "No matching repositories."
+            : "Repositories you open will appear here."}
+        </p>
+      )}
+    </section>
+  );
+  const importErrors = review.importErrors.map((failure) => (
+    <div className="handoff-error" key={failure.receipt}>
+      <p role="alert">
+        {failure.path} · {failure.message}
+      </p>
+      <Button
+        variant="link"
+        disabled={disabled}
+        onClick={() => void perform("opening", review.retryImports)}
+      >
+        Retry import
+      </Button>
+    </div>
+  ));
+  if (onManage) {
+    return (
+      <div
+        className="repository-chooser checkout-switcher quick-switch"
+        aria-busy={disabled}
+      >
+        {repositoryList}
+        {importErrors}
+        {error && (
+          <p role="alert" className="form-error">
+            {error}
+          </p>
+        )}
+        <Button
+          ref={browseButton}
+          variant="unstyled"
+          className="toolbar-menu-action"
+          onClick={onManage}
+        >
+          <Icon name="folder" />
+          Manage repositories…
+        </Button>
+      </div>
+    );
+  }
   return (
-    <div className="repository-chooser" aria-busy={disabled || loading}>
+    <div
+      className={`repository-chooser ${switcher ? "checkout-switcher" : ""}`}
+      aria-busy={disabled || loading}
+    >
       {browsing ? (
         <section className="folder-browser" aria-label="Browse folders">
           <Button
@@ -328,6 +536,7 @@ export function RepositoryChooser({
         </section>
       ) : (
         <>
+          {switcher && repositoryList}
           <Button
             ref={browseButton}
             className="wide-button browse-folders"
@@ -335,136 +544,80 @@ export function RepositoryChooser({
             onClick={browse}
           >
             <Icon name="folder" />
-            {pending === "picking" ? "Choosing folder…" : "Browse folders"}
+            {pending === "picking"
+              ? "Choosing folder…"
+              : switcher
+                ? "Open folder…"
+                : "Browse folders"}
           </Button>
-          <form
-            className="connect-form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              void open(path);
-            }}
-          >
-            <label htmlFor={`${id}-path`}>
-              {inDialog ? "Repository path" : "Local repository"}
-            </label>
-            <div className="repository-path-row">
-              <div className="repo-input-wrap">
-                <Input
-                  id={`${id}-path`}
-                  name="path"
-                  value={path}
-                  onChange={(event) => {
-                    setPath(event.target.value);
-                    setError("");
-                  }}
-                  placeholder="/path/to/your/repository"
-                  required
-                  autoComplete="off"
-                  spellCheck={false}
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  disabled={disabled}
-                  aria-invalid={!!error}
-                  aria-describedby={`${id}-hint ${id}-error`}
-                />
-              </div>
-              <Button
-                variant="secondary"
-                className="repository-path-open"
-                type="submit"
-                disabled={disabled}
-                aria-label={
-                  pending === "opening" ? "Opening…" : "Open repository"
-                }
-              >
-                {pending === "opening" ? "Opening…" : "Open"}
-                <Icon name="arrow" />
-              </Button>
-            </div>
-            <p id={`${id}-error`} className="form-error" role="alert">
-              {error || (!inDialog ? review.serviceError : "")}
-            </p>
-          </form>
-          <section
-            className="recent-repositories"
-            aria-labelledby={`${id}-recent`}
-          >
-            <div className="recent-heading">
-              <h3 id={`${id}-recent`}>Recent repositories</h3>
-              {review.recentRepositories.length > 0 && (
-                <label className="recent-search" htmlFor={`${id}-search`}>
-                  <Icon name="search" />
+          {switcher && (
+            <Button
+              variant="link"
+              onClick={() => setEnterPath(!enterPath)}
+              aria-expanded={enterPath}
+            >
+              Enter path
+            </Button>
+          )}
+          {(!switcher || enterPath) && (
+            <form
+              className="connect-form"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void open(path);
+              }}
+            >
+              <label htmlFor={`${id}-path`}>
+                {inDialog ? "Repository path" : "Local repository"}
+              </label>
+              <div className="repository-path-row">
+                <div className="repo-input-wrap">
                   <Input
-                    ref={searchInput}
-                    id={`${id}-search`}
-                    type="search"
-                    aria-label="Search recent repositories"
-                    placeholder="Filter…"
-                    value={query}
+                    id={`${id}-path`}
+                    name="path"
+                    value={path}
+                    onChange={(event) => {
+                      setPath(event.target.value);
+                      setError("");
+                    }}
+                    placeholder="/path/to/your/repository"
+                    required
                     autoComplete="off"
-                    autoCapitalize="none"
                     spellCheck={false}
-                    onChange={(event) => setQuery(event.target.value)}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    disabled={disabled}
+                    aria-invalid={!!error}
+                    aria-describedby={`${id}-hint ${id}-error`}
                   />
-                </label>
-              )}
-            </div>
-            <ul className="recent-list">
-              {filtered.map((repo) => {
-                const current =
-                  review.mode === "git" &&
-                  review.workspace?.repo.path === repo.path;
-                return (
-                  <li key={repo.path}>
-                    <Button
-                      variant="unstyled"
-                      className="recent-repository"
-                      disabled={disabled}
-                      aria-label={`Open ${repo.name} ${repo.path}`}
-                      onClick={() => void open(repo.path)}
-                    >
-                      <Icon name="repo" />
-                      <span className="recent-copy">
-                        <strong>{repo.name}</strong>
-                        <small>{repo.path}</small>
-                      </span>
-                      {current ? (
-                        <span className="current-repository">Current</span>
-                      ) : (
-                        <Icon name="arrow" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      disabled={disabled}
-                      aria-label={`Remove ${repo.name} ${repo.path} from recent repositories`}
-                      title="Remove from recent repositories"
-                      onClick={() =>
-                        void perform("removing", async (current) => {
-                          if (
-                            (await review.removeRecentRepository(repo.path)) &&
-                            current()
-                          )
-                            focusAfterRemoval.current = true;
-                        })
-                      }
-                    >
-                      <Icon name="close" />
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-            {!filtered.length && (
-              <p className="chooser-empty">
-                {query.trim() && review.recentRepositories.length
-                  ? "No matching repositories."
-                  : "Repositories you open will appear here."}
+                </div>
+                <Button
+                  variant="secondary"
+                  className="repository-path-open"
+                  type="submit"
+                  disabled={disabled}
+                  aria-label={
+                    pending === "opening" ? "Opening…" : "Open repository"
+                  }
+                >
+                  {pending === "opening" ? "Opening…" : "Open"}
+                  <Icon name="arrow" />
+                </Button>
+              </div>
+              <p id={`${id}-error`} className="form-error" role="alert">
+                {error || (!inDialog ? review.serviceError : "")}
               </p>
-            )}
-          </section>
+            </form>
+          )}
+          {switcher && !enterPath && error && (
+            <p role="alert" className="form-error">
+              {error}
+            </p>
+          )}
+          {!switcher && repositoryList}
         </>
       )}
+      {importErrors}
       <div className="chooser-footer">
         <p id={`${id}-hint`}>
           <Icon name="lock" />

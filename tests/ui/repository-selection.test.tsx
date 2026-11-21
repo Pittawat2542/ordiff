@@ -77,7 +77,7 @@ test("folder browsing receives focus after the native dialog opens", async () =>
   );
   render(<App />);
   fireEvent.click(
-    await screen.findByRole("button", { name: "Switch repository: current" }),
+    await screen.findByRole("button", { name: "Repository settings" }),
   );
   expect(screen.getByRole("button", { name: "Browse folders" })).toHaveFocus();
 });
@@ -135,7 +135,7 @@ test("removing the last recent repository returns focus to browsing and hides th
   );
   render(<App />);
   fireEvent.click(
-    await screen.findByRole("button", { name: "Switch repository: current" }),
+    await screen.findByRole("button", { name: "Repository settings" }),
   );
   const remove = screen.getByRole("button", {
     name: "Remove current /repos/current from recent repositories",
@@ -175,7 +175,7 @@ test("switcher removal and a failed recent open preserve current review progress
     await screen.findByRole("button", { name: /Mark reviewed & next/ }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "Switch repository: current" }),
+    screen.getByRole("button", { name: "Repository settings" }),
   );
   const dialog = screen.getByRole("dialog", { name: "Open a repository" });
   expect(within(dialog).getByText("Current", { exact: true })).toBeVisible();
@@ -400,7 +400,7 @@ test("native selection arriving after the repository dialog is dismissed cannot 
   );
   render(<App />);
   fireEvent.click(
-    await screen.findByRole("button", { name: "Switch repository: current" }),
+    await screen.findByRole("button", { name: "Repository settings" }),
   );
   fireEvent.click(screen.getByRole("button", { name: "Browse folders" }));
   fireEvent.click(
@@ -428,7 +428,7 @@ test("reopening a dismissed chooser permits a fresh action while an old native p
   );
   render(<App />);
   fireEvent.click(
-    await screen.findByRole("button", { name: "Switch repository: current" }),
+    await screen.findByRole("button", { name: "Repository settings" }),
   );
   Object.defineProperty(
     screen.getByRole("dialog", { name: "Open a repository" }),
@@ -442,7 +442,7 @@ test("reopening a dismissed chooser permits a fresh action while an old native p
     screen.getByRole("button", { name: "Close repository settings" }),
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "Switch repository: current" }),
+    screen.getByRole("button", { name: "Repository settings" }),
   );
   expect(screen.getByRole("button", { name: "Browse folders" })).toBeEnabled();
 });
@@ -518,4 +518,156 @@ test("late folder navigation cannot replace a newer Home selection", async () =>
   expect(screen.getByRole("textbox", { name: "Folder path" })).toHaveValue(
     "/home/test",
   );
+});
+
+test("toolbar repository switcher opens in place and only opens settings on request", async () => {
+  vi.stubGlobal("fetch", vi.fn(async () =>
+    json({ revision: 1, workspace: repo, recentRepositories: recent }),
+  ));
+  render(<App />);
+  const trigger = await screen.findByRole("button", { name: "Switch repository: current" });
+  fireEvent.click(trigger);
+  const panel = screen.getByRole("group", { name: "Switch repository" });
+  expect(trigger).toHaveAttribute("aria-controls", panel.id);
+  expect(trigger).toHaveAttribute("aria-expanded", "true");
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  expect(within(panel).getByRole("searchbox")).toHaveFocus();
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  expect(trigger).toHaveFocus();
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(trigger);
+  fireEvent.pointerDown(document.body);
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("button", { name: "Manage repositories…" }));
+  expect(screen.getByRole("dialog", { name: "Open a repository" })).toBeVisible();
+  expect(trigger).toHaveAttribute("aria-expanded", "false");
+});
+
+test("keyboard switcher prioritizes incoming plans and supports filtering by branch", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () =>
+      json({
+        revision: 4,
+        workspace: repo,
+        recentRepositories: recent,
+        repositories: [
+          recent[0],
+          {
+            ...recent[1],
+            branch: "feature/login",
+            unseen: true,
+            activity: "Plan ready",
+          },
+        ],
+      }),
+    ),
+  );
+  render(<App />);
+  const switcher = await screen.findByRole("button", {
+    name: /Switch repository: current/,
+  });
+  expect(switcher).toHaveAccessibleName(/1 repo with updates/);
+  fireEvent.keyDown(document, { key: "K", ctrlKey: true, shiftKey: true });
+  const search = await screen.findByRole("searchbox", {
+    name: "Search repositories",
+  });
+  expect(search).toHaveFocus();
+  fireEvent.change(search, { target: { value: "login" } });
+  expect(screen.getByText("Plan ready")).toBeVisible();
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  expect(screen.getByRole("button", { name: /Open other/ })).toHaveFocus();
+});
+
+test("background delivery preserves the open hunk, scroll offset and comment through a round trip", async () => {
+  const { emitRevision } = await import("./setup");
+  const second = {
+    ...repo,
+    repositoryId: "B",
+    comparisonId: "B-working",
+    version: "v2",
+    repo: { ...repo.repo, ...recent[1] },
+  };
+  const first = { ...repo, repositoryId: "A", comparisonId: "A-working" };
+  const entries = [
+    recent[0],
+    { ...recent[1], unseen: true, activity: "Plan ready", activityId: "p1" },
+  ];
+  let selected = first;
+  let revision = 1;
+  const fetcher = vi.fn(async (url, options) => {
+    if (url === "/api/repository") {
+      selected =
+        JSON.parse(options.body).path === recent[1].path ? second : first;
+      revision++;
+    }
+    return json({
+      workspace: selected,
+      revision,
+      repositories: revision === 1 ? recent : entries,
+    });
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: /Mark reviewed & next/ }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Add file comment" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Comment text" }), {
+    target: { value: "Check this hunk again" },
+  });
+  const scroller = document.querySelector(".review-scroll")!;
+  scroller.scrollTop = 64;
+  const initialRequests = fetcher.mock.calls.length;
+  await act(async () =>
+    emitRevision(++revision, {
+      type: "checkout-activity",
+      repositoryId: "B",
+      comparisonId: "B-working",
+      repositories: entries,
+    }),
+  );
+  expect(fetcher.mock.calls).toHaveLength(initialRequests);
+  expect(screen.getByRole("textbox", { name: "Comment text" })).toHaveValue(
+    "Check this hunk again",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Close feedback" }));
+  async function select(name: string) {
+    fireEvent.click(screen.getByRole("button", { name: /Switch repository:/ }));
+    fireEvent.click(
+      await screen.findByRole("button", {
+        name: new RegExp("Open " + name + " "),
+      }),
+    );
+    await screen.findByRole("button", {
+      name: new RegExp("Switch repository: " + name),
+    });
+  }
+  await select("other");
+  await select("current");
+  expect(
+    screen.getByRole("region", { name: "two.ts code diff" }),
+  ).toBeVisible();
+  expect(scroller.scrollTop).toBe(64);
+  fireEvent.click(screen.getByRole("button", { name: /Feedback: 1 comment/ }));
+  expect(screen.getByRole("textbox", { name: "Comment text" })).toHaveValue(
+    "Check this hunk again",
+  );
+});
+
+test("a late review update cannot replace a newly selected checkout", async () => {
+  const { renderHook } = await import("@testing-library/react");
+  const { useReview } = await import("../../src/hooks/use-review");
+  const second = { ...repo, repo: { ...repo.repo, ...recent[1] }, version: "other-version" };
+  vi.stubGlobal("fetch", vi.fn(async url => json({
+    workspace: url === "/api/repository" ? second : repo,
+    revision: url === "/api/repository" ? 2 : 1,
+  })));
+  const { result } = renderHook(useReview);
+  await waitFor(() => expect(result.current.workspace?.repo.name).toBe("current"));
+  const oldController = result.current;
+  await act(() => result.current.connectRepository(second.repo.path));
+  act(() => oldController.applyWorkspace({ ...repo, version: "late-result" }));
+  expect(result.current.workspace?.repo.name).toBe("other");
 });

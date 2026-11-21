@@ -50,7 +50,7 @@ File requests identify an authorized `sectionId`, exact `version`, and `side` (`
 
 ## Review storage and recovery
 
-The versioned workspace document records selection and recent repositories. Per-repository metadata and content-addressed source payloads live in `reviews/` beside it. Separate worktree roots have separate identities. The backend serializes mutations, writes source payloads first, atomically replaces metadata, and acknowledges only after persistence. A process ownership lock prevents concurrent writers to one data root. Unsupported schema versions are rejected instead of overwritten.
+The versioned workspace document records the checkout registry, last selection, and unread activity. Per-repository metadata and content-addressed source payloads live in `reviews/` beside it. Separate worktree roots have separate identities. The backend serializes mutations, writes source payloads first, atomically replaces metadata, and acknowledges only after persistence. A process ownership lock prevents concurrent writers to one data root. Unsupported schema versions are rejected instead of overwritten.
 
 New snapshots and active displayed content are pinned; captured snapshots receive a 30-minute renewable lease. Default retention keeps ten unpinned snapshots, with a 512 MiB historical content budget, 64 MiB full text per snapshot, and 2 MiB per file. Storage pressure or unavailable historical content produces an explicit error. Review records, captured quotes, and published batches survive source-payload eviction. **Review storage** can clear historical source or delete repository review data after typing the repository name.
 
@@ -58,7 +58,7 @@ Legacy browser feedback and review keys import once, using an installation ID an
 
 Appearance and navigation stay local to each client. Comment edits debounce for 400 ms and flush on blur. A local `.draft` outbox retains exact expected revisions and pending text until server acknowledgement. On conflict, **Use latest** discards the pending edit; **Save as another comment** preserves it separately. Retrying never silently overwrites another window's newer record. Keep the original browser profile when recovering unsent drafts.
 
-Back up `workspace.json`, `reviews/`, and the browser profile while Ordiff is stopped. Migration preserves legacy workspace backups. Restore the data root as a unit, using a compatible application version; never edit the metadata while its backend owns the lock. Development and desktop roots remain separate.
+Back up `workspace.json`, `reviews/`, `handoffs/`, and the browser profile while Ordiff and its MCP clients are stopped. Migration preserves legacy workspace backups. Restore the data root as a unit, using a compatible application version; never edit the metadata while its backend owns the lock. Development and desktop roots remain separate.
 
 Resource mutations carry explicit IDs and optimistic revisions. Error responses identify conflicts (409), evicted source (410), limits (413), or invalid comparison selections (422). Legacy `/api/file`, workspace, and plan adapters remain for compatibility; new integrations should use snapshot-bound resources and MCP proposals.
 

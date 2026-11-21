@@ -70,6 +70,7 @@ function ReviewWorkspace() {
       return next;
     });
   }, []);
+  const repositoryTrigger = useRef<HTMLButtonElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusAfterUndo = useRef(false);
@@ -203,6 +204,18 @@ function ReviewWorkspace() {
   useEffect(() => {
     function keyboard(event: KeyboardEvent) {
       if (overflowOpen) return;
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key.toLowerCase() === "k"
+          && !dialog && !promptOpen && !document.querySelector("dialog[open]")) {
+        event.preventDefault();
+        if (repositoryTrigger.current) {
+          repositoryTrigger.current.focus({ preventScroll: true });
+          repositoryTrigger.current.click();
+        } else {
+          openDialog("repository");
+        }
+        return;
+      }
+      if (repositoryTrigger.current?.getAttribute("aria-expanded") === "true") return;
       if (
         (event.metaKey || event.ctrlKey) &&
         event.key.toLowerCase() === "k" &&
@@ -302,6 +315,7 @@ function ReviewWorkspace() {
         <main className="workspace">
           <div className="workspace-header">
             <Toolbar
+              repositoryTrigger={repositoryTrigger}
               review={review}
               navOpen={navOpen}
               feedbackOpen={feedbackOpen}

@@ -1,4 +1,5 @@
-import { Fragment, lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { ReviewScope } from "../lib/review-scope";
+import { Fragment, lazy, Suspense, useContext, useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import Papa from "papaparse";
@@ -28,6 +29,7 @@ export default function FilePreview({
   side: Side;
   showCaption?: boolean;
 }) {
+  const scope = useContext(ReviewScope);
   const kind = previewKind(section);
   const revision = section.file?.[side];
   const [asset, setAsset] = useState<{
@@ -43,6 +45,7 @@ export default function FilePreview({
           version,
           side,
           kind === "word-doc" ? "text" : undefined,
+          undefined, scope,
         )
       : null;
   useEffect(() => {
@@ -414,6 +417,7 @@ function MarkdownImage({
   version?: string;
   side: Side;
 }) {
+  const scope = useContext(ReviewScope);
   const [src, setSrc] = useState("");
   const [failed, setFailed] = useState(false);
   const external = /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(source);
@@ -422,7 +426,7 @@ function MarkdownImage({
     const abort = new AbortController();
     let url: string | undefined;
     void fetchFile(
-      fileUrl(section.id, version, side, undefined, source),
+      fileUrl(section.id, version, side, undefined, source, scope),
       abort.signal,
     )
       .then(({ buffer, mimeType }) => {
@@ -437,7 +441,7 @@ function MarkdownImage({
       abort.abort();
       if (url) URL.revokeObjectURL(url);
     };
-  }, [source, external, section.id, section.file, side, version]);
+  }, [source, external, section.id, section.file, side, version, scope]);
   if (src && !failed)
     return <img src={src} alt={alt} onError={() => setFailed(true)} />;
   return (

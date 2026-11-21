@@ -1,3 +1,4 @@
+import { reviewScope } from "../lib/review-scope";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Icon } from "../icons";
 import { DiffView } from "../diff-view";
@@ -200,6 +201,7 @@ export function ReviewContent({
           <DiffView
             section={active}
             version={workspace.version}
+            scope={reviewScope(workspace)}
             expanded={expanded.has(active.id)}
             onToggleContext={toggleActiveContext}
             onAddComment={addComment}

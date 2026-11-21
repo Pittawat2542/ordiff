@@ -1,3 +1,4 @@
+import { reviewScope } from "../lib/review-scope";
 import { SampleCycle } from "./sample-cycle";
 import { useEffect, useState } from "react";
 import type { ReviewController } from "../hooks/use-review";
@@ -96,7 +97,7 @@ export function CycleToolbar({ review }: { review: ReviewController }) {
     const response = await fetch(path, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
+      body: JSON.stringify({repositoryId: w?.repositoryId, comparisonId: w?.comparisonId, ...(body as object)}),
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Request failed.");
@@ -161,7 +162,12 @@ export function CycleToolbar({ review }: { review: ReviewController }) {
           <Button
             variant="secondary"
             disabled={busy}
-            onClick={() => void perform(() => review.refreshDiff())}
+            onClick={() => void perform(async () => {
+              const data = await post(`/api/comparisons/${w.comparisonId}/activate`, {
+                snapshotId: cycle.latestSnapshotId, expectedPassId: cycle.pass.id,
+              });
+              review.applyWorkspace(data.workspace);
+            })}
           >
             Review update
           </Button>
@@ -309,7 +315,7 @@ export function CycleToolbar({ review }: { review: ReviewController }) {
                     onClick={() =>
                       void perform(async () => {
                         const response = await fetch(
-                          `/api/snapshots/${p.snapshotId}?limit=500`,
+                          `/api/snapshots/${p.snapshotId}?limit=500&${reviewScope(w)}`,
                         );
                         const data = await response.json();
                         if (!response.ok) throw new Error(data.error);
@@ -345,6 +351,7 @@ export function CycleToolbar({ review }: { review: ReviewController }) {
                   <DiffView
                     section={historical.sections[historySection]}
                     version={historical.version}
+                    scope={reviewScope(w)}
                   />
                 )}
               </section>
