@@ -1146,7 +1146,6 @@
     display: flex;
     align-items: baseline;
     inline-size: 100%;
-    min-inline-size: max-content;
     min-block-size: 22px;
     font: 13px/22px var(--font-code);
     color: var(--code);
@@ -1180,7 +1179,6 @@
   }
   .diff-line code {
     font: inherit;
-    white-space: pre;
     padding-inline: 6px 20px;
   }
   .diff-card-footer {

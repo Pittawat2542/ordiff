@@ -156,13 +156,20 @@
 .text-review .diff-marker {
   user-select: none;
 }
-.text-review.wrap-lines .diff-line {
-  min-width: 0;
+.text-review:not(.wrap-lines) .diff-line {
+  min-inline-size: max-content;
 }
-.text-review.wrap-lines .diff-line code {
-  white-space: pre-wrap;
+.diff-line code,
+.split-cell code,
+.full-file-code code {
+  flex: 1;
+  min-inline-size: 0;
+  white-space: break-spaces;
   overflow-wrap: anywhere;
-  min-width: 0;
+}
+.text-review:not(.wrap-lines) :is(.diff-line, .split-cell) code {
+  flex: none;
+  white-space: pre;
 }
 .text-review .field-hint {
   display: block;
@@ -179,18 +186,12 @@
 }
 .split-cell {
   display: flex;
+  align-items: baseline;
   gap: 12px;
   min-width: 0;
   border-right: 1px solid var(--border);
   padding: 1px 8px;
   overflow-x: auto;
-}
-.split-cell code {
-  white-space: pre;
-}
-.wrap-lines .split-cell code {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .split-cell .line-number {
   flex: 0 0 38px;
@@ -224,11 +225,8 @@
 }
 .full-file-code > div {
   display: flex;
+  align-items: baseline;
   gap: 14px;
-}
-.full-file-code code {
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 .full-file-code .line-number {
   flex: 0 0 48px;
