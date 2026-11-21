@@ -46,7 +46,7 @@ function tool(handler) {
 }
 
 serveStdio(() => {
-  const server = new McpServer({ name: "ordiff", version: "0.3.0" });
+  const server = new McpServer({ name: "ordiff", version: "0.3.1" });
   server.registerTool(
     "get_review_context",
     {

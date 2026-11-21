@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1 — 2026-11-21
+
+- Long code lines wrap within unified diffs, split diffs, and the full-file view. The gutter shows each source line number once, beside its first visual line.
+
 ## 0.3.0 — 2026-11-13
 
 First tagged release of Ordiff, a local Git review workspace for macOS and browser development.
