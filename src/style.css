@@ -1092,7 +1092,7 @@
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 12px 16px;
+    padding: 9px 16px;
   }
   .file-title {
     min-inline-size: 0;
@@ -1111,8 +1111,10 @@
     display: grid;
     place-items: center;
     inline-size: 28px;
-    block-size: 30px;
-    border: 1px solid var(--border);
+    block-size: 28px;
+    flex-shrink: 0;
+    background: var(--subtle);
+    border: 1px solid var(--hairline);
     border-radius: calc(var(--radius-control) - 2px);
     color: var(--secondary);
   }
@@ -1125,7 +1127,8 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--space-3);
-    padding: 9px 16px;
+    padding: 4px 16px;
+    min-block-size: 36px;
     border-block-start: 1px solid var(--border);
     color: var(--secondary);
     background: var(--subtle);
@@ -1151,7 +1154,7 @@
     white-space: nowrap;
   }
   .diff-code {
-    padding-block: var(--space-3);
+    padding-block: 6px;
     overflow-x: auto;
     border-radius: 0 0 11px 11px;
     scrollbar-width: thin;

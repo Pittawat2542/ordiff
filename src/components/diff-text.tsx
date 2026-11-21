@@ -5,6 +5,7 @@ import type {
   FeedbackAnchor,
   FeedbackComment,
 } from "../types";
+import { Icon } from "../icons";
 import { highlightDiff } from "../lib/highlight";
 import { Button } from "./ui/button";
 import { NativeDialog } from "./dialogs";
@@ -456,7 +457,11 @@ export function DiffText({
     >
       <div className="diff-display-bar">
         <details>
-          <summary>Diff display</summary>
+          <summary>
+            <Icon name="sliders" />
+            Diff display
+            <Icon name="down" />
+          </summary>
           <div className="display-options">
             {(["split", "wrap", "words", "whitespace"] as const).map((key) => (
               <label key={key}>
@@ -488,6 +493,7 @@ export function DiffText({
               setSelection(null);
             }}
           >
+            <Icon name="file" />
             View full file
           </Button>
         )}
@@ -543,10 +549,12 @@ export function DiffText({
       )}
       {section.fileId && (
         <Button
-          variant="link"
+          variant="unstyled"
+          className="context-expand"
           disabled={loading}
           onClick={() => void context("above")}
         >
+          <Icon name="up" />
           Show 20 lines above
         </Button>
       )}
@@ -640,10 +648,12 @@ export function DiffText({
       )}
       {section.fileId && (
         <Button
-          variant="link"
+          variant="unstyled"
+          className="context-expand"
           disabled={loading}
           onClick={() => void context("below")}
         >
+          <Icon name="down" />
           Show 20 lines below
         </Button>
       )}

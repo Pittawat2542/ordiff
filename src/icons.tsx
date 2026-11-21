@@ -8,6 +8,7 @@ const paths: Record<string, ReactNode> = {
   swap: <><path d="M3 7h17m-4-4 4 4-4 4M21 17H4m4-4-4 4 4 4" /></>,
   wrap: <><path d="M3 5h18M3 10h14a4 4 0 0 1 0 8h-4m3-3-3 3 3 3M3 15h5M3 20h5" /></>,
   more: <><circle cx="5" cy="12" r="1" /><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /></>,
+  comment: <path d="M20 14a2 2 0 0 1-2 2H9l-6 4V6a2 2 0 0 1 2-2h13a2 2 0 0 1 2 2v8Z" />,
   plus: <path d="M12 5v14M5 12h14" />,
   trash: (
     <>

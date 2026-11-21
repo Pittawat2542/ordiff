@@ -89,10 +89,11 @@ function DiffPanel({
             <Button
               variant="link"
               className="add-file-comment"
+              title="Add file comment"
               aria-label="Add file comment"
               onClick={() => onAddComment("file")}
             >
-              <Icon name="plus" />
+              <Icon name="comment" />
               <span>Add comment</span>
             </Button>
           )}
@@ -103,14 +104,15 @@ function DiffPanel({
             <span>{section.symbol || "Changed section"}</span>
           </span>
           <span className="hunk-actions">
-            <span>{section.language}</span>
+            {section.language !== "Code" && <span>{section.language}</span>}
             {onAddComment && (
               <Button
                 variant="link"
+                title="Add section comment"
                 aria-label="Add section comment"
                 onClick={() => onAddComment("section")}
               >
-                <Icon name="plus" />
+                <Icon name="comment" />
                 <span>Comment on section</span>
               </Button>
             )}

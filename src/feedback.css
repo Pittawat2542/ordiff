@@ -79,19 +79,25 @@
   }
   .add-file-comment {
     flex-shrink: 0;
-    padding-inline-start: 10px;
-    border-inline-start: 1px solid var(--border);
+    padding-inline: 9px;
+    border: 1px solid var(--border);
     font-size: 12px;
+  }
+  .add-file-comment:hover,
+  .hunk-actions .text-button:hover {
+    background: var(--accent-tint);
+    text-decoration: none;
   }
   .hunk-actions {
     display: flex;
     align-items: center;
-    gap: var(--space-4);
+    gap: var(--space-2);
     flex-shrink: 0;
   }
   .hunk-actions .text-button {
-    font-size: 11px;
+    font-size: 12px;
     min-block-size: 28px;
+    padding-inline: 6px;
   }
   .feedback-panel-header {
     display: flex;
@@ -641,11 +647,15 @@
     .hunk-heading > span:first-child {
       min-inline-size: 0;
     }
+    .hunk-actions .text-button > span,
     .add-file-comment > span {
       display: none;
     }
-    .add-file-comment {
-      padding-inline-start: 8px;
+    .add-file-comment,
+    .hunk-actions .text-button {
+      justify-content: center;
+      min-inline-size: 44px;
+      min-block-size: 44px;
     }
   }
 }

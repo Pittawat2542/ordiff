@@ -116,12 +116,76 @@
   overflow: auto;
 }
 .diff-display-bar {
-  padding: 8px 16px;
-  border-bottom: 1px solid var(--border);
+  gap: 4px 12px;
+  padding: 4px 16px;
+  border-block-end: 1px solid var(--hairline);
+  font-size: 12px;
+}
+.diff-display-bar details {
+  min-inline-size: 0;
+  margin-inline-end: auto;
+}
+.diff-display-bar summary,
+.diff-display-bar .text-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding-inline: 6px;
+  min-block-size: 28px;
+  border-radius: 5px;
+  color: var(--secondary);
   font-size: 12px;
 }
 .diff-display-bar summary {
   cursor: pointer;
+  list-style: none;
+}
+.diff-display-bar summary::-webkit-details-marker {
+  display: none;
+}
+.diff-display-bar summary .icon {
+  inline-size: 14px;
+  block-size: 14px;
+}
+.diff-display-bar details[open] summary .icon:last-child {
+  transform: rotate(180deg);
+}
+.diff-display-bar summary:hover,
+.diff-display-bar .text-button:hover {
+  background: var(--subtle);
+  color: var(--strong);
+  text-decoration: none;
+}
+.context-expand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  inline-size: 100%;
+  min-block-size: 28px;
+  padding: 4px 16px;
+  background: var(--subtle);
+  color: var(--muted);
+  font: 12px var(--font-ui);
+}
+.context-expand .icon {
+  inline-size: 14px;
+  block-size: 14px;
+}
+.context-expand:first-of-type {
+  border-block-end: 1px solid var(--hairline);
+}
+.context-expand:last-of-type {
+  border-block-start: 1px solid var(--hairline);
+}
+.diff-card:not(:has(.diff-card-footer)) .context-expand:has(+ .field-hint:empty) {
+  border-radius: 0 0 11px 11px;
+}
+.context-expand:hover:not(:disabled) {
+  background: var(--accent-tint);
+  color: var(--strong);
+}
+.context-expand:focus-visible {
+  outline-offset: -2px;
 }
 .display-options {
   display: flex;
@@ -137,14 +201,17 @@
 .text-review .line-number {
   border: 0;
   background: transparent;
-  color: var(--secondary);
+  color: var(--faint);
   font: inherit;
-  cursor: pointer;
+  font-size: 11px;
+  padding-block: 0;
+  padding-inline-start: 0;
+  align-self: flex-start;
   text-align: right;
   user-select: none;
   border-radius: 0;
 }
-.text-review .line-number:hover,
+.text-review button.line-number:hover,
 .text-review .line-number[aria-pressed="true"] {
   background: var(--border);
   color: var(--strong);
@@ -174,6 +241,17 @@
 .text-review .field-hint {
   display: block;
   padding: 8px 16px;
+}
+.text-review .field-hint:empty {
+  padding: 0;
+  margin: 0;
+}
+@media (pointer: coarse), (max-width: 600px) {
+  .context-expand,
+  .diff-display-bar summary,
+  .diff-display-bar .text-button {
+    min-block-size: 44px;
+  }
 }
 .split-code {
   overflow: auto;
